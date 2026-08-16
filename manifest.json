@@ -1,0 +1,168 @@
+{
+    "id": "cmspro.sso",
+    "name": "统一登录",
+    "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信等社交化登录（当前实现微信登录，预留 QQ 等扩展）。仅对当前系统使用，不对外开放。支持子域名绑定与目录访问。",
+    "version": "1.0.0",
+    "icon": "fa fa-sign-in",
+    "author": "CmsPro",
+    "require": {
+        "php": ">=8.3",
+        "cmspro": ">=5.0.0"
+    },
+    "dependencies": {
+        "app_ids": [],
+        "versions": {}
+    },
+    "providers": [
+        "ServiceProvider"
+    ],
+    "hooks": "Hooks",
+    "install": "Install",
+    "menus": [
+        {
+            "title": "统一登录",
+            "icon": "fa fa-sign-in",
+            "code": "admin_cmspro_sso_group",
+            "order": 95,
+            "children": [
+                {
+                    "title": "登录设置",
+                    "icon": "fa fa-cog",
+                    "path": "/admin/cmspro/sso/setting",
+                    "code": "admin_cmspro_sso_setting",
+                    "order": 1
+                }
+            ]
+        }
+    ],
+    "home_routes": {
+        "/sso/login": "统一登录页",
+        "/sso/register": "统一注册页",
+        "/sso/auth/wechat/callback": "微信授权回调",
+        "/sso/auth/wechat/pc-success": "PC扫码登录成功页"
+    },
+    "config_groups": [
+        {
+            "name": "access_settings",
+            "title": "访问设置",
+            "items": [
+                {
+                    "name": "access_mode",
+                    "title": "访问模式",
+                    "type": "select",
+                    "value": "path",
+                    "options": [
+                        {
+                            "label": "路径前缀",
+                            "value": "path"
+                        },
+                        {
+                            "label": "子域名绑定",
+                            "value": "domain"
+                        }
+                    ],
+                    "tips": "路径前缀模式：通过 /sso/ 访问；子域名模式：通过 sso.example.com 访问。切换后需刷新路由缓存"
+                },
+                {
+                    "name": "access_domain",
+                    "title": "绑定域名",
+                    "type": "text",
+                    "value": "",
+                    "tips": "子域名模式下生效，支持多域名绑定，以英文逗号分隔，如 sso.example.com,login.example.com。需在 DNS 中添加解析并在 .env 中设置 SESSION_DOMAIN=.example.com"
+                },
+                {
+                    "name": "access_path",
+                    "title": "路径前缀",
+                    "type": "text",
+                    "value": "sso",
+                    "tips": "路径前缀模式下生效，如设置为 sso 则通过 /sso/ 访问。仅限字母数字和短横线"
+                }
+            ]
+        },
+        {
+            "name": "wechat_settings",
+            "title": "微信登录设置",
+            "items": [
+                {
+                    "name": "wechat_enabled",
+                    "title": "启用微信登录",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "开启后前台登录页显示微信登录入口"
+                },
+                {
+                    "name": "wechat_mp_app_id",
+                    "title": "公众号 AppID",
+                    "type": "text",
+                    "value": "",
+                    "tips": "微信开放平台/公众号的 AppID，用于网页授权登录"
+                },
+                {
+                    "name": "wechat_mp_app_secret",
+                    "title": "公众号 AppSecret",
+                    "type": "password",
+                    "value": "",
+                    "tips": "微信公众平台的 AppSecret，用于 code 换取 openid"
+                },
+                {
+                    "name": "wechat_oauth_enabled",
+                    "title": "网页授权外挂",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "微信「网页授权域名」配额有限时启用，启用后需填写外挂地址，系统将通过外挂脚本统一接入网页授权"
+                },
+                {
+                    "name": "wechat_oauth_url",
+                    "title": "网页授权外挂地址",
+                    "type": "text",
+                    "value": "",
+                    "tips": "wechat_oauth.php 脚本的完整 URL（如 https://oauth.example.com/wechat_oauth.php），启用网页授权外挂后必填"
+                }
+            ]
+        },
+        {
+            "name": "login_settings",
+            "title": "登录设置",
+            "items": [
+                {
+                    "name": "login_title",
+                    "title": "登录页标题",
+                    "type": "text",
+                    "value": "统一登录",
+                    "tips": "前台登录页展示的标题"
+                },
+                {
+                    "name": "allow_register",
+                    "title": "允许注册",
+                    "type": "switch",
+                    "value": "1",
+                    "tips": "开启后前台显示注册入口"
+                },
+                {
+                    "name": "override_system",
+                    "title": "覆盖系统登录",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "开启后访问系统默认登录 /user/login 与注册 /user/register 将重定向到本应用登录/注册页"
+                },
+                {
+                    "name": "default_redirect",
+                    "title": "登录成功默认跳转",
+                    "type": "text",
+                    "value": "/",
+                    "tips": "登录成功后未指定 redirect 参数时的默认跳转地址"
+                }
+            ]
+        }
+    ],
+    "permissions": [
+        {
+            "code": "cmspro.sso.manage",
+            "name": "统一登录管理"
+        },
+        {
+            "code": "cmspro.sso.setting",
+            "name": "登录设置"
+        }
+    ]
+}

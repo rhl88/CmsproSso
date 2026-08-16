@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>统一登录设置</title>
+    <link rel="stylesheet" href="{{ asset('CmsProUi/component/pear/css/pear.css') }}">
+    <link rel="stylesheet" href="{{ asset('CmsProUi/font-awesome/4.7.0/css/font-awesome.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('Admin/css/admin.css') }}">
+    <link rel="stylesheet" href="{{ asset('Admin/css/variables.css') }}">
+    <link rel="stylesheet" href="{{ asset('Admin/css/reset.css') }}">
+    <style>
+        .layui-form-label { width: 160px; }
+        .layui-input-block { margin-left: 190px; }
+        .layui-form-item .layui-input-inline { width: 260px; }
+        .settings-tab-content { padding-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="pear-container">
+    <div class="layui-card">
+        <div class="layui-card-body">
+                <form class="layui-form" lay-filter="settings-form">
+                <div class="layui-tab layui-tab-brief" lay-filter="settings-tab">
+                <ul class="layui-tab-title">
+                    <li class="layui-this"><i class="fa fa-globe"></i> 访问设置</li>
+                    <li><i class="fa fa-weixin"></i> 微信设置</li>
+                </ul>
+                <div class="layui-tab-content settings-tab-content">
+
+                        {{-- 访问设置 Tab --}}
+                        <div class="layui-tab-item layui-show">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">访问模式</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                    <select name="access_mode" id="access_mode" lay-filter="access_mode">
+                                        <option value="path" {{ ($configs['access_mode'] ?? 'path') === 'path' ? 'selected' : '' }}>路径前缀</option>
+                                        <option value="domain" {{ ($configs['access_mode'] ?? 'path') === 'domain' ? 'selected' : '' }}>子域名绑定</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">路径前缀：/sso/ 访问；子域名：sso.example.com 访问</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="access-domain-item">
+                                <label class="layui-form-label">绑定域名</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="access_domain" value="{{ $configs['access_domain'] ?? '' }}"
+                                           placeholder="sso.example.com" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">子域名模式下生效，支持多域名逗号分隔。需配置 DNS 与 SESSION_DOMAIN</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="access-path-item">
+                                <label class="layui-form-label">路径前缀</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="access_path" value="{{ $configs['access_path'] ?? 'sso' }}"
+                                           placeholder="sso" class="layui-input" style="width: 200px;">
+                                    <div class="layui-form-mid layui-word-aux">路径前缀模式下生效，如 sso 则通过 /sso/ 访问</div>
+                                </div>
+                            </div>
+
+
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">登录页标题</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="login_title" value="{{ $configs['login_title'] ?? '统一登录' }}"
+                                           class="layui-input" style="width: 200px;">
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">覆盖系统</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="override_system" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['override_system'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后，访问系统默认登录 /user/login 与注册 /user/register 将重定向到本应用登录/注册页</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">允许注册</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="allow_register" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['allow_register'] ?? '1') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台显示注册入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">默认跳转地址</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="default_redirect" value="{{ $configs['default_redirect'] ?? '/' }}"
+                                           placeholder="/" class="layui-input" style="width: 200px;">
+                                    <div class="layui-form-mid layui-word-aux">登录成功后未指定 redirect 参数时的默认跳转地址</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 微信设置 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用微信登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="wechat_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['wechat_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示微信登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">公众号 AppID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="wechat_mp_app_id" value="{{ $configs['wechat_mp_app_id'] ?? '' }}"
+                                           placeholder="wx..." class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppID，用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">公众号 AppSecret</label>
+                                <div class="layui-input-block">
+                                    <input type="password" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
+                                           placeholder="请输入 AppSecret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppSecret，用于 code 换取 openid</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">网页授权外挂</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="wechat_oauth_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="wechat_oauth_enabled"
+                                           {{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">微信「网页授权域名」配额有限时启用</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="wechat_oauth_url_row" style="{{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? '' : 'display:none;' }}">
+                                <label class="layui-form-label">外挂地址</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="wechat_oauth_url" value="{{ $configs['wechat_oauth_url'] ?? '' }}"
+                                           placeholder="https://oauth.example.com/wechat_oauth.php" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">
+                                        部署 <code>wechat_oauth.php</code> 的完整访问地址（参考 <code>https://gitee.com/holley/wechat_oauth</code>）。<br>
+                                        <strong>使用场景：</strong>公众号「网页授权域名」绑定数量受限时，将外挂脚本部署到已绑定域名下，多个站点共用同一授权入口。<br>
+                                        <strong>登录对接：</strong>开启后，用户在微信内点击「微信登录」时跳转到 <code>{外挂地址}?action=authorize&type=userinfo&return_url={统一登录回调地址}&state={state}</code>，外挂脚本完成授权后跳回统一登录回调地址 <code>/auth/wechat/callback</code> 并附带 <code>openid</code>、<code>state</code> 参数，获取昵称头像用于首次登录创建用户。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 提交按钮 --}}
+                        <div style="padding: 20px 0; text-align: center;">
+                            <button type="button" class="layui-btn layui-btn-lg" id="save-settings">
+                                <i class="layui-icon layui-icon-ok"></i> 保存设置
+                            </button>
+                        </div>
+                </div>
+            </div>
+                </form>
+        </div>
+    </div>
+</div>
+
+<script src="{{ asset('CmsProUi/component/layui/layui.js') }}"></script>
+<script src="{{ asset('CmsProUi/component/pear/pear.js') }}"></script>
+<script>
+layui.use(['form', 'jquery', 'element', 'common'], function() {
+    var form = layui.form;
+    var $ = layui.jquery;
+    var layer = layui.layer;
+    var element = layui.element;
+
+    // CSRF Token 全局配置（所有 AJAX 自动携带）
+    $.ajaxSetup({
+        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+    });
+
+    form.render();
+    element.render();
+
+    // 访问模式联动：路径前缀 / 子域名绑定，仅显示对应表单
+    function toggleAccessFields(mode) {
+        $('#access-domain-item').toggle(mode === 'domain');
+        $('#access-path-item').toggle(mode === 'path');
+    }
+
+    form.on('select(access_mode)', function(data) {
+        toggleAccessFields(data.value);
+    });
+
+    toggleAccessFields($('#access_mode').val());
+
+    // 网页授权外挂开关：动态显示/隐藏外挂地址表单
+    form.on('switch(wechat_oauth_enabled)', function(data) {
+        $('#wechat_oauth_url_row').toggle(data.elem.checked);
+    });
+
+    // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system'];
+
+    $('#save-settings').on('click', function() {
+        var formData = {};
+
+        // 收集 input/textarea/select
+        $('.layui-form input[type="text"], .layui-form input[type="password"], '
+          + '.layui-form select').each(function() {
+            var name = $(this).attr('name');
+            if (name) formData[name] = $(this).val();
+        });
+
+        // 单独收集开关字段，转为 '1' / '0'
+        switchFields.forEach(function(field) {
+            var checked = $('input[name="' + field + '"]').is(':checked');
+            formData[field] = checked ? '1' : '0';
+        });
+
+        var loadIdx = layer.load(2);
+        $.ajax({
+            url: '/admin/cmspro/sso/api/settings',
+            type: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(res) {
+                layer.close(loadIdx);
+                if (res.code === 0) {
+                    layer.msg('保存成功', { icon: 1, time: 1500 });
+                } else {
+                    layer.msg(res.message || '保存失败', { icon: 2 });
+                }
+            },
+            error: function(xhr) {
+                layer.close(loadIdx);
+                if (xhr.status === 401) {
+                    layer.msg('登录已过期，请刷新页面', { icon: 2 });
+                } else {
+                    var msg = '网络错误，请重试';
+                    try {
+                        var res = JSON.parse(xhr.responseText);
+                        if (res.message) msg = res.message;
+                    } catch(e) {}
+                    layer.msg(msg, { icon: 2 });
+                }
+            }
+        });
+    });
+});
+</script>
+</body>
+</html>

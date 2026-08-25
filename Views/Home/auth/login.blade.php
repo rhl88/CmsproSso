@@ -23,11 +23,20 @@
         </div>
     </form>
 
-    @if($configs['wechat_enabled'] === '1')
+    @if($configs['wechat_enabled'] === '1' || $configs['phone_login_enabled'] === '1')
     <div class="sso-divider"><span>其他登录方式</span></div>
-    <button type="button" class="sso-wechat-btn" id="wechat-login-btn">
-        <i class="layui-icon layui-icon-login-wechat"></i> 微信登录
-    </button>
+    <div class="sso-oauth-row">
+        @if($configs['wechat_enabled'] === '1')
+        <button type="button" class="sso-wechat-btn" id="wechat-login-btn">
+            <i class="layui-icon layui-icon-login-wechat"></i> 微信登录
+        </button>
+        @endif
+        @if($configs['phone_login_enabled'] === '1')
+        <button type="button" class="sso-phone-btn" id="phone-login-btn">
+            <i class="layui-icon layui-icon-cellphone"></i> 手机登录
+        </button>
+        @endif
+    </div>
     @endif
 
     <div class="sso-link-row">
@@ -125,6 +134,124 @@ layui.use(['form', 'jquery', 'layer'], function(){
             btn: ['知道了']
         });
     });
+
+    // 手机验证码登录
+    $('#phone-login-btn').on('click', function(){
+        openPhoneLoginModal();
+    });
+
+    // 弹出手机验证码登录弹窗
+    function openPhoneLoginModal(){
+        var content = '<form class="layui-form" style="padding:20px 24px 0;">'
+            + '<div class="layui-form-item">'
+            + '<input type="text" name="phone" id="phone-login-phone" placeholder="请输入手机号" maxlength="11" class="layui-input" autocomplete="off">'
+            + '</div>'
+            + '<div class="layui-form-item" style="position: relative; margin-bottom: 5px;">'
+            + '<input type="text" name="code" id="phone-login-code" placeholder="请输入验证码" maxlength="6" class="layui-input" style="padding-right: 100px;" autocomplete="off">'
+            + '<button type="button" class="layui-btn" id="phone-send-code" style="position:absolute; right:0; top:0; height:38px; line-height:38px; padding:0 12px;">获取验证码</button>'
+            + '</div>'
+            + '</form>';
+
+        layer.open({
+            type: 1,
+            title: '手机验证码登录',
+            area: ['360px', '225px'],
+            content: content,
+            btn: ['登录'],
+            yes: function(btnIndex){
+                phoneLogin(btnIndex);
+            }
+        });
+
+        // 发送验证码（含 60 秒倒计时）
+        var countdown = 0;
+        var timer = null;
+        $('#phone-send-code').on('click', function(){
+            var phone = $.trim($('#phone-login-phone').val());
+            if (!/^1\d{10}$/.test(phone)) {
+                layer.msg('请输入正确的手机号', {icon: 2});
+                return;
+            }
+            if (countdown > 0) return;
+
+            var loadIdx = layer.load(2);
+            $.ajax({
+                url: window.SSO_API_BASE + '/auth/phone/code',
+                type: 'POST',
+                data: { phone: phone },
+                success: function(res){
+                    layer.close(loadIdx);
+                    if (res.code === 0) {
+                        layer.msg('验证码已发送', {icon: 1});
+                        countdown = 60;
+                        var $btn = $('#phone-send-code');
+                        $btn.text(countdown + ' 秒后重发').attr('disabled', true);
+                        timer = setInterval(function(){
+                            countdown--;
+                            if (countdown <= 0) {
+                                clearInterval(timer);
+                                $btn.text('获取验证码').removeAttr('disabled');
+                            } else {
+                                $btn.text(countdown + ' 秒后重发');
+                            }
+                        }, 1000);
+                    } else {
+                        layer.msg(res.message || '发送失败', {icon: 2});
+                    }
+                },
+                error: function(xhr){
+                    layer.close(loadIdx);
+                    var msg = '请求失败';
+                    try {
+                        var res = JSON.parse(xhr.responseText);
+                        if (res.message) msg = res.message;
+                    } catch(e) {}
+                    layer.msg(msg, {icon: 2});
+                }
+            });
+        });
+    }
+
+    // 手机验证码登录提交
+    function phoneLogin(btnIndex){
+        var phone = $.trim($('#phone-login-phone').val());
+        var code = $.trim($('#phone-login-code').val());
+        if (!/^1\d{10}$/.test(phone)) {
+            layer.msg('请输入正确的手机号', {icon: 2});
+            return;
+        }
+        if (code.length !== 6) {
+            layer.msg('请输入 6 位验证码', {icon: 2});
+            return;
+        }
+
+        var loadIdx = layer.load(2);
+        $.ajax({
+            url: window.SSO_API_BASE + '/auth/phone/login',
+            type: 'POST',
+            data: { phone: phone, code: code },
+            success: function(res){
+                layer.close(loadIdx);
+                if (res.code === 0) {
+                    layer.close(btnIndex);
+                    layer.msg('登录成功', {icon: 1, time: 1000}, function(){
+                        window.location.href = res.data.redirect || '/';
+                    });
+                } else {
+                    layer.msg(res.message || '登录失败', {icon: 2});
+                }
+            },
+            error: function(xhr){
+                layer.close(loadIdx);
+                var msg = '请求失败';
+                try {
+                    var res = JSON.parse(xhr.responseText);
+                    if (res.message) msg = res.message;
+                } catch(e) {}
+                layer.msg(msg, {icon: 2});
+            }
+        });
+    }
 
     // 获取微信授权 URL
     function wechatLogin(device, callback){

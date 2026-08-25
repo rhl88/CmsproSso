@@ -20,4 +20,30 @@ return [
 
     // 覆盖系统登录
     'override_system' => '0',
+
+    // 手机验证码登录
+    'phone_login_enabled' => '0',
+
+    // 短信服务商（aliyun/tencent/volcengine）
+    'sms_provider' => 'aliyun',
+
+    // 阿里云短信
+    'sms_aliyun_access_key_id' => '',
+    'sms_aliyun_access_key_secret' => '',
+    'sms_aliyun_sign_name' => '',
+    'sms_aliyun_template_code' => '',
+
+    // 腾讯云短信
+    'sms_tencent_secret_id' => '',
+    'sms_tencent_secret_key' => '',
+    'sms_tencent_sdk_app_id' => '',
+    'sms_tencent_sign_name' => '',
+    'sms_tencent_template_id' => '',
+
+    // 火山引擎短信
+    'sms_volc_access_key_id' => '',
+    'sms_volc_access_key_secret' => '',
+    'sms_volc_sms_account' => '',
+    'sms_volc_sign_name' => '',
+    'sms_volc_template_id' => '',
 ];

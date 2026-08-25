@@ -25,6 +25,7 @@
                 <ul class="layui-tab-title">
                     <li class="layui-this"><i class="fa fa-globe"></i> 访问设置</li>
                     <li><i class="fa fa-weixin"></i> 微信设置</li>
+                    <li><i class="fa fa-mobile"></i> 手机登录</li>
                 </ul>
                 <div class="layui-tab-content settings-tab-content">
 
@@ -140,6 +141,132 @@
                             </div>
                         </div>
 
+                        {{-- 手机登录 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用验证码登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="phone_login_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['phone_login_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示手机验证码登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">短信服务商</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                    <select name="sms_provider" id="sms_provider" lay-filter="sms_provider">
+                                        <option value="aliyun" {{ ($configs['sms_provider'] ?? 'aliyun') === 'aliyun' ? 'selected' : '' }}>阿里云</option>
+                                        <option value="tencent" {{ ($configs['sms_provider'] ?? 'aliyun') === 'tencent' ? 'selected' : '' }}>腾讯云</option>
+                                        <option value="volcengine" {{ ($configs['sms_provider'] ?? 'aliyun') === 'volcengine' ? 'selected' : '' }}>火山引擎</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">选择用于发送验证码短信的服务商，同一时间仅一家生效</div>
+                                </div>
+                            </div>
+
+                            <div id="sms-aliyun-fields" style="display:none;">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">AccessKey ID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_aliyun_access_key_id" value="{{ $configs['sms_aliyun_access_key_id'] ?? '' }}" placeholder="LTAI..." class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">阿里云 RAM 用户的 AccessKey ID</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">AccessKey Secret</label>
+                                    <div class="layui-input-block">
+                                        <input type="password" name="sms_aliyun_access_key_secret" value="{{ $configs['sms_aliyun_access_key_secret'] ?? '' }}" placeholder="请输入 AccessKey Secret" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">阿里云 RAM 用户的 AccessKey Secret</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">短信签名</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_aliyun_sign_name" value="{{ $configs['sms_aliyun_sign_name'] ?? '' }}" placeholder="已报备的签名内容" class="layui-input">
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">模板 Code</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_aliyun_template_code" value="{{ $configs['sms_aliyun_template_code'] ?? '' }}" placeholder="SMS_123456789" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">短信模板 CODE，模板变量为 ${code}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="sms-tencent-fields" style="display:none;">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">SecretId</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_tencent_secret_id" value="{{ $configs['sms_tencent_secret_id'] ?? '' }}" placeholder="AKID..." class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">腾讯云 API 密钥 SecretId</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">SecretKey</label>
+                                    <div class="layui-input-block">
+                                        <input type="password" name="sms_tencent_secret_key" value="{{ $configs['sms_tencent_secret_key'] ?? '' }}" placeholder="请输入 SecretKey" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">腾讯云 API 密钥 SecretKey</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">SDKAppID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_tencent_sdk_app_id" value="{{ $configs['sms_tencent_sdk_app_id'] ?? '' }}" placeholder="1400006666" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">短信应用 SDKAppID</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">短信签名</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_tencent_sign_name" value="{{ $configs['sms_tencent_sign_name'] ?? '' }}" placeholder="已报备的签名内容" class="layui-input">
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">模板 ID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_tencent_template_id" value="{{ $configs['sms_tencent_template_id'] ?? '' }}" placeholder="1234567" class="layui-input">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="sms-volcengine-fields" style="display:none;">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">AccessKey ID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_volc_access_key_id" value="{{ $configs['sms_volc_access_key_id'] ?? '' }}" placeholder="AKLT..." class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">火山引擎 API 访问密钥 Access Key ID</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">Secret Access Key</label>
+                                    <div class="layui-input-block">
+                                        <input type="password" name="sms_volc_access_key_secret" value="{{ $configs['sms_volc_access_key_secret'] ?? '' }}" placeholder="请输入 Secret Access Key" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">火山引擎 API 访问密钥 Secret Access Key</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">消息组 ID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_volc_sms_account" value="{{ $configs['sms_volc_sms_account'] ?? '' }}" placeholder="A123****" class="layui-input">
+                                        <div class="layui-form-mid layui-word-aux">短信消息组 SmsAccount</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">短信签名</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_volc_sign_name" value="{{ $configs['sms_volc_sign_name'] ?? '' }}" placeholder="已报备的签名内容" class="layui-input">
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">模板 ID</label>
+                                    <div class="layui-input-block">
+                                        <input type="text" name="sms_volc_template_id" value="{{ $configs['sms_volc_template_id'] ?? '' }}" placeholder="ST_6f8c****" class="layui-input">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         {{-- 提交按钮 --}}
                         <div style="padding: 20px 0; text-align: center;">
                             <button type="button" class="layui-btn layui-btn-lg" id="save-settings">
@@ -187,8 +314,20 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
         $('#wechat_oauth_url_row').toggle(data.elem.checked);
     });
 
+    // 短信服务商切换：动态显示对应服务商的配置字段
+    function toggleSmsProviderFields(provider) {
+        $('#sms-aliyun-fields, #sms-tencent-fields, #sms-volcengine-fields').hide();
+        $('#sms-' + provider + '-fields').show();
+    }
+
+    form.on('select(sms_provider)', function(data) {
+        toggleSmsProviderFields(data.value);
+    });
+
+    toggleSmsProviderFields($('#sms_provider').val());
+
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
-    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system'];
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system', 'phone_login_enabled'];
 
     $('#save-settings').on('click', function() {
         var formData = {};

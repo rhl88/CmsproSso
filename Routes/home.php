@@ -4,9 +4,15 @@ use App\Apps\CmsproSso\Controllers\Home\AuthController;
 use Illuminate\Support\Facades\Route;
 
 // 前台统一登录页面路由（公开访问）
-// 子域名模式：访问绑定域名根路径时重定向到登录页
+// 首页：已登录停留首页，未登录跳转登录页
 Route::get('/', function () {
-    return redirect(\App\Apps\CmsproSso\Services\ShareService::frontUrl('/login'));
+    if (!auth('web')->check()) {
+        return redirect(\App\Apps\CmsproSso\Services\ShareService::frontUrl('/login'));
+    }
+
+    return view('cmspro.sso::Home.home', [
+        'user' => auth('web')->user(),
+    ]);
 });
 Route::get('/login', [AuthController::class, 'loginForm']);
 Route::get('/register', [AuthController::class, 'registerForm']);

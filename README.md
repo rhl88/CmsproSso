@@ -1,6 +1,6 @@
 # 统一登录应用 应用文档
 
-> 应用ID：`cmspro.sso` | 文档版本：1.1.2 | 应用版本：1.1.2 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
+> 应用ID：`cmspro.sso` | 文档版本：1.3.0 | 应用版本：1.3.0 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
 
 - 官方地址：https://www.cmspro.cn/apps/cmspro.sso
 - 本应用基于 CMSPRO 运行，请先安装 [CMSPRO](https://www.cmspro.cn/help/2)
@@ -9,7 +9,7 @@
 
 为当前系统提供前台用户统一登录入口，使系统各处登录/注册入口统一进入同一认证流程：
 
-- **登录方式**：账号密码登录（用户名/邮箱/手机号）+ 微信扫码登录（PC）/ 微信内授权登录（移动端）
+- **登录方式**：账号密码登录（用户名/邮箱/手机号）+ 微信扫码登录（PC）/ 微信内授权登录（移动端）+ 手机验证码登录（阿里云/腾讯云/火山引擎短信）
 - **注册**：用户名 + 邮箱注册；系统已配置邮箱时强制 6 位邮箱验证码（复用系统验证码接口），未配置时自动跳过
 - **找回密码**：两步验证流程（邮箱验证码 → 重置密码），系统已配置邮箱时在登录页提供入口
 - **访问模式**：路径前缀（`/sso/`）或子域名绑定（如 `sso.example.com`）
@@ -39,7 +39,9 @@ CmsproSso/
 ├── Services/
 │   ├── SettingService.php           # 配置服务
 │   ├── ShareService.php             # 前台 URL 生成
-│   └── WechatOauthService.php       # 微信 OAuth2 服务
+│   ├── WechatOauthService.php       # 微信 OAuth2 服务
+│   ├── SmsService.php               # 短信发送门面
+│   └── Sms/                         # 短信发送器（阿里云/腾讯云/火山引擎）
 ├── Views/
 │   ├── Admin/settings/index.blade.php    # 后台设置页
 │   ├── Home/                              # 前台页面（登录/注册/找回密码/微信）

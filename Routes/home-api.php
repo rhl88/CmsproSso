@@ -17,6 +17,10 @@ Route::get('/auth/wechat/login-url', [AuthController::class, 'wechatLoginUrl']);
 Route::get('/auth/wechat/login-status', [AuthController::class, 'wechatLoginStatus']);
 Route::post('/auth/wechat/complete', [AuthController::class, 'completeProfile']);
 
+// 手机验证码登录 API
+Route::post('/auth/phone/code', [AuthController::class, 'sendPhoneCode']);
+Route::post('/auth/phone/login', [AuthController::class, 'phoneLogin']);
+
 // 需登录的 API
 Route::middleware('cmspro.sso.auth')->group(function () {
     Route::get('/user/info', [AuthController::class, 'userInfo']);

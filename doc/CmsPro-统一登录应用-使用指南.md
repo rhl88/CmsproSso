@@ -1,7 +1,7 @@
 # 统一登录 · 使用指南
 
-> 版本：1.1.0 | 更新日期：2026-08-13
-> 应用版本：1.0.0 | 应用 ID：`cmspro.sso`
+> 版本：1.3.0 | 更新日期：2026-08-25
+> 应用版本：1.3.0 | 应用 ID：`cmspro.sso`
 
 > 本指南帮助开发者快速安装、运行和验证统一登录应用。
 
@@ -34,7 +34,7 @@
 | `apps` 表 | 存在 `cmspro.sso` 记录，status=1（启用） |
 | `admin_menus` 表 | 存在「统一登录」菜单（含登录设置子菜单） |
 | `admin_permissions` 表 | 存在 `cmspro.sso.manage`、`cmspro.sso.setting` 权限 |
-| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（11 项） |
+| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（26 项） |
 | `app_cmspro_sso_login_logs` 表 | 已创建 |
 
 ## 三、功能验证
@@ -52,7 +52,7 @@
 | 模式 | 登录页 URL | 说明 |
 |------|-----------|------|
 | 路径前缀（默认） | `/sso/login` | 通过 `/sso/` 前缀访问 |
-| 子域名绑定 | `http://sso.example.com/login` | 需配置 DNS + SESSION_DOMAIN；访问绑定域名根路径 `/` 自动跳转到 `/login` |
+| 子域名绑定 | `http://sso.example.com/login` | 需配置 DNS + SESSION_DOMAIN；访问绑定域名根路径 `/` 时，已登录停留首页，未登录跳转 `/login` |
 
 验证要点：
 - 登录页正常渲染，标题为「统一登录」
@@ -62,6 +62,7 @@
 - 找回密码页 `/sso/forgot-password` 两步流程可用：输入邮箱发送验证码 → 凭验证码重置密码后跳转登录页（复用系统 `/api/user/password/*` 接口）
 - 注册时邮箱验证码必填，验证码错误或过期拒绝注册，注册成功后验证码一次性失效（复用系统 `/api/user/register/email-code` 接口）
 - 微信登录入口显示（开启「启用微信登录」且已配置 AppID/AppSecret 时）
+- 手机登录入口显示（开启「手机验证码登录」且短信服务已配置时）
 - 子域名模式下访问绑定域名根路径 `/` 跳转到 `/login`
 
 ### 3.3 覆盖系统登录
@@ -85,8 +86,29 @@
 | GET | `/api/cmspro/sso/auth/wechat/login-url` | 获取微信授权 URL（device=pc 为扫码模式） |
 | GET | `/api/cmspro/sso/auth/wechat/login-status` | PC 扫码登录轮询 |
 | POST | `/api/cmspro/sso/auth/wechat/complete` | 首次微信登录完善资料 |
+| POST | `/api/cmspro/sso/auth/phone/code` | 发送手机验证码短信（限频 60 秒/次） |
+| POST | `/api/cmspro/sso/auth/phone/login` | 手机验证码登录（未注册自动创建用户） |
 | GET | `/api/cmspro/sso/qrcode` | 生成二维码图片（PC 扫码用） |
 | GET | `/api/cmspro/sso/user/info` | 获取当前登录用户信息（需登录） |
+
+### 3.5 手机验证码登录
+
+后台「登录设置 → 手机验证码登录」开关开启后，前台登录页出现「手机登录」按钮，点击弹出验证码登录弹窗。
+
+配置步骤（三选一短信服务商，同一时间仅一家生效）：
+
+| 服务商 | 后台配置项 | 说明 |
+|--------|-----------|------|
+| 阿里云 | AccessKey ID / AccessKey Secret / 短信签名 / 模板 Code | 模板变量名须为 `code` |
+| 腾讯云 | SecretId / SecretKey / SDKAppID / 短信签名 / 模板 ID | 短信应用需开通验证码模板 |
+| 火山引擎 | AccessKey ID / Secret Access Key / 消息组 ID / 短信签名 / 模板 ID | 消息组 ID 即 SmsAccount |
+
+验证要点：
+- 开启开关但未填写短信凭证时，发送验证码返回「短信服务未配置，请联系管理员」
+- 点击「获取验证码」后按钮进入 60 秒倒计时，同一手机号 60 秒内不可重复发送
+- 验证码 5 分钟有效，错误或过期返回「验证码不正确或已过期」，验证码一次性失效
+- 手机号已注册：验证码校验通过后自动登录；未注册：自动创建用户（用户名取手机号，密码随机不可登录），跳转完善资料页
+- 登录日志 `platform` 记录为 `phone`
 
 ## 四、卸载验证
 
@@ -132,7 +154,9 @@ app/Apps/CmsproSso/
 ├── Services/
 │   ├── SettingService.php         # 配置服务
 │   ├── ShareService.php           # 前台 URL 生成
-│   └── WechatOauthService.php     # 微信 OAuth2 服务
+│   ├── WechatOauthService.php     # 微信 OAuth2 服务
+│   ├── SmsService.php             # 短信发送门面（按服务商调度）
+│   └── Sms/                       # 短信发送器（阿里云/腾讯云/火山引擎）
 ├── Views/
 │   ├── Admin/settings/index.blade.php   # 后台设置页
 │   ├── Home/                             # 前台页面
@@ -144,8 +168,9 @@ app/Apps/CmsproSso/
 
 | 问题 | 解决方案 |
 |------|---------|
-| 登录页不显示微信登录入口 | 后台「微信设置」开启「启用微信登录」并填写 AppID/AppSecret |
-| 微信登录提示「未配置」 | 检查公众号 AppID/AppSecret 是否填写完整 |
+| 登录页不显示手机登录入口 | 后台「手机登录」Tab 开启「启用手机验证码登录」 |
+| 发送验证码提示「短信服务未配置」 | 检查所选短信服务商的凭证、签名、模板是否填写完整 |
+| 收不到验证码 | 确认短信服务商控制台签名/模板已审核通过，模板变量名须为 `code` |
 | 子域名模式无法访问 | 配置 DNS 解析、Web 服务器虚拟主机，`.env` 设置 `SESSION_DOMAIN=.example.com` |
 | 切换访问模式后不生效 | 执行 `php artisan route:clear && php artisan config:clear` |
 | 二维码接口 500 | 确认 `endroid/qr-code` 依赖已安装 |
@@ -158,3 +183,5 @@ app/Apps/CmsproSso/
 | 1.1.0 | 2026-08-13 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
 | 1.1.1 | 2026-08-13 | 修复子域名模式：根路径 `/` 跳转登录页；ShareService 从数据库读取访问配置，覆盖系统重定向到子域名 |
 | 1.1.2 | 2026-08-25 | 新增找回密码页（两步验证流程，复用系统密码重置接口）；注册接口接入邮箱验证码校验，与系统注册逻辑一致，未配置邮箱时自动跳过 |
+| 1.2.1 | 2026-08-25 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页；不再无条件重定向到 `/login` |
+| 1.3.0 | 2026-08-25 | 新增手机验证码登录：支持阿里云/腾讯云/火山引擎短信服务商，验证码 5 分钟有效、60 秒限频，未注册手机号自动创建用户；后台设置页新增「手机登录」Tab |

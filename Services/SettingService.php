@@ -25,6 +25,13 @@ class SettingService
         'wechat_oauth_enabled', 'wechat_oauth_url',
         'login_title', 'allow_register', 'default_redirect',
         'override_system',
+        'phone_login_enabled', 'sms_provider',
+        'sms_aliyun_access_key_id', 'sms_aliyun_access_key_secret',
+        'sms_aliyun_sign_name', 'sms_aliyun_template_code',
+        'sms_tencent_secret_id', 'sms_tencent_secret_key',
+        'sms_tencent_sdk_app_id', 'sms_tencent_sign_name', 'sms_tencent_template_id',
+        'sms_volc_access_key_id', 'sms_volc_access_key_secret',
+        'sms_volc_sms_account', 'sms_volc_sign_name', 'sms_volc_template_id',
     ];
 
     /**
@@ -79,5 +86,27 @@ class SettingService
     {
         $redirect = trim($this->get('default_redirect', '/'));
         return $redirect !== '' ? $redirect : '/';
+    }
+
+    /**
+     * 支持的短信服务商
+     */
+    public const SMS_PROVIDERS = ['aliyun', 'tencent', 'volcengine'];
+
+    /**
+     * 判断是否启用手机验证码登录
+     */
+    public function isPhoneLoginEnabled(): bool
+    {
+        return $this->get('phone_login_enabled', '0') === '1';
+    }
+
+    /**
+     * 获取当前短信服务商（非法值回退为 aliyun）
+     */
+    public function getSmsProvider(): string
+    {
+        $provider = $this->get('sms_provider', 'aliyun');
+        return in_array($provider, self::SMS_PROVIDERS, true) ? $provider : 'aliyun';
     }
 }

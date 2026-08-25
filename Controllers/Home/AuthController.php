@@ -27,6 +27,7 @@ class AuthController extends Controller
         $configs = [
             'login_title'     => $this->settingService->get('login_title', '统一登录'),
             'wechat_enabled'  => $this->settingService->get('wechat_enabled', '0'),
+            'phone_login_enabled' => $this->settingService->isPhoneLoginEnabled() ? '1' : '0',
             'allow_register'  => $this->settingService->get('allow_register', '1'),
             'wechat_configured' => $this->settingService->isWechatConfigured() ? '1' : '0',
         ];

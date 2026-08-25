@@ -5,6 +5,7 @@ namespace App\Apps\CmsproSso\Controllers\HomeApi;
 use App\Apps\CmsproSso\Models\LoginLog;
 use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
+use App\Apps\CmsproSso\Services\SmsService;
 use App\Apps\CmsproSso\Services\WechatOauthService;
 use App\Models\User;
 use App\Models\UserGroup;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
@@ -31,8 +33,14 @@ class AuthController extends Controller
     protected const CACHE_LOGIN_RESULT_PREFIX = 'cmspro_sso_login_result:';
     protected const LOGIN_STATE_TTL = 600;  // 10 分钟过期
 
+    // Cache 键前缀：手机验证码
+    protected const CACHE_PHONE_CODE_PREFIX = 'cmspro_sso_phone_code:';
+    protected const PHONE_CODE_TTL = 10;          // 验证码有效期（分钟）
+    protected const PHONE_CODE_MAX_ATTEMPTS = 3;  // 每分钟内单个手机号最多发送次数
+
     public function __construct(
-        protected SettingService $settingService
+        protected SettingService $settingService,
+        protected SmsService $smsService
     ) {
     }
 
@@ -162,6 +170,129 @@ class AuthController extends Controller
             'code'    => 0,
             'message' => '注册成功',
             'data'    => ['redirect' => $this->resolveRedirect($request)],
+        ]);
+    }
+
+    /**
+     * 发送手机验证码短信
+     */
+    public function sendPhoneCode(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isPhoneLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '手机验证码登录未启用'], 400);
+        }
+
+        if (! $this->smsService->isConfigured()) {
+            return response()->json(['code' => 400, 'message' => '短信服务未配置，请联系管理员'], 400);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'required|string|regex:/^1\d{10}$/',
+        ], [
+            'phone.required' => '请输入手机号',
+            'phone.regex'    => '手机号格式不正确',
+        ]);
+
+        $phone = $validated['phone'];
+        $throttleKey = 'cmspro_sso_sms_throttle:' . $phone;
+
+        if (RateLimiter::tooManyAttempts($throttleKey, self::PHONE_CODE_MAX_ATTEMPTS)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return response()->json(['code' => 429, 'message' => "发送过于频繁，请 {$seconds} 秒后再试"], 429);
+        }
+        RateLimiter::hit($throttleKey, 60);
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        Cache::put(self::CACHE_PHONE_CODE_PREFIX . $phone, $code, now()->addMinutes(self::PHONE_CODE_TTL));
+
+        $result = $this->smsService->sendVerificationCode($phone, $code);
+
+        if (! $result['success']) {
+            // 发送失败清除验证码缓存，避免残留
+            Cache::forget(self::CACHE_PHONE_CODE_PREFIX . $phone);
+            return response()->json(['code' => 500, 'message' => '短信发送失败：' . $result['message']], 500);
+        }
+
+        return response()->json(['code' => 0, 'message' => '验证码已发送']);
+    }
+
+    /**
+     * 手机验证码登录
+     *
+     * 手机号已存在则自动登录；不存在则自动创建用户并跳转完善资料页。
+     */
+    public function phoneLogin(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isPhoneLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '手机验证码登录未启用'], 400);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'required|string|regex:/^1\d{10}$/',
+            'code'  => 'required|string|size:6',
+        ], [
+            'phone.required' => '请输入手机号',
+            'phone.regex'    => '手机号格式不正确',
+            'code.required'  => '请输入验证码',
+            'code.size'      => '验证码必须是6位',
+        ]);
+
+        $phone = $validated['phone'];
+        $cachedCode = Cache::get(self::CACHE_PHONE_CODE_PREFIX . $phone);
+
+        if (! $cachedCode || ! hash_equals((string) $cachedCode, (string) $validated['code'])) {
+            return response()->json(['code' => 422, 'message' => '验证码不正确或已过期'], 422);
+        }
+
+        // 验证码一次性失效
+        Cache::forget(self::CACHE_PHONE_CODE_PREFIX . $phone);
+
+        $user = User::where('phone', $phone)->first();
+        $isNew = $user === null;
+
+        if ($isNew) {
+            $user = $this->createPhoneUser($phone);
+        }
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+        $user->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($user->id, 'phone', $request, 1, $isNew ? '手机验证码登录成功（首次创建）' : '手机验证码登录成功');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '登录成功',
+            'data'    => [
+                'redirect' => $isNew
+                    ? ShareService::frontUrl('/auth/wechat/complete')
+                    : $this->resolveRedirect($request),
+                'is_new'   => $isNew,
+            ],
+        ]);
+    }
+
+    /**
+     * 首次手机号登录：创建用户（用户名优先取手机号本身，密码随机不可登录）
+     */
+    protected function createPhoneUser(string $phone): User
+    {
+        $defaultGroup = UserGroup::default()->enabled()->first();
+
+        $username = $phone;
+        while (User::where('username', $username)->exists()) {
+            $username = $phone . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        }
+
+        $randomPassword = 'phone_' . bin2hex(random_bytes(16));
+
+        return User::create([
+            'username' => $username,
+            'password' => Hash::make($randomPassword),
+            'nickname' => $phone,
+            'phone'    => $phone,
+            'group_id' => $defaultGroup?->id,
+            'status'   => 1,
         ]);
     }
 

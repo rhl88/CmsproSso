@@ -1,7 +1,7 @@
 # CmsPro 统一登录扩展指南
 
-> 版本：1.0.0 | 更新日期：2026-08-13
-> 适用应用：CmsproSso v1.0.0+
+> 版本：1.1.0 | 更新日期：2026-08-25
+> 适用应用：CmsproSso v1.3.0+
 
 ---
 
@@ -33,6 +33,7 @@ $enabled = $app && $app->status->value === 1;
 | `SettingService` | `App\Apps\CmsproSso\Services\SettingService` | 读取应用配置 |
 | `ShareService` | `App\Apps\CmsproSso\Services\ShareService` | 生成前台页面 URL（双模式兼容） |
 | `WechatOauthService` | `App\Apps\CmsproSso\Services\WechatOauthService` | 微信网页授权（OAuth2）能力 |
+| `SmsService` | `App\Apps\CmsproSso\Services\SmsService` | 短信发送门面（按服务商调度发送器） |
 
 ### 3.2 公开方法
 
@@ -45,12 +46,21 @@ $enabled = $app && $app->status->value === 1;
 | `isWechatOauthProxyEnabled()` | - | bool | 是否启用网页授权外挂 |
 | `getWechatOauthUrl()` | - | string | 获取外挂地址 |
 | `getDefaultRedirect()` | - | string | 获取登录默认跳转地址 |
+| `isPhoneLoginEnabled()` | - | bool | 是否启用手机验证码登录 |
+| `getSmsProvider()` | - | string | 获取当前短信服务商（aliyun/tencent/volcengine） |
 
 **ShareService**（静态方法）
 
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
 | `frontUrl(string $path)` | 前台路径 | string | 生成前台页面 URL（path/domain 双模式） |
+
+**SmsService**
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `sendVerificationCode(string $phone, string $code)` | 手机号、验证码 | array | 按当前服务商发送验证码短信，返回 `['success'=>bool,'message'=>string]` |
+| `isConfigured()` | - | bool | 当前服务商所需凭证是否已完整配置 |
 
 **WechatOauthService**
 
@@ -73,6 +83,12 @@ $loginUrl = \App\Apps\CmsproSso\Services\ShareService::frontUrl('/login');
 // 复用微信授权能力
 $wechatService = app(\App\Apps\CmsproSso\Services\WechatOauthService::class);
 $result = $wechatService->buildOauthRedirectUrl($callbackUrl, $state);
+
+// 复用短信能力（需先开启手机验证码登录并配置短信服务商凭证）
+$smsService = app(\App\Apps\CmsproSso\Services\SmsService::class);
+if ($smsService->isConfigured()) {
+    $result = $smsService->sendVerificationCode('13800138000', '123456');
+}
 ```
 
 ## 四、钩子扩展点
@@ -110,7 +126,7 @@ $result = $wechatService->buildOauthRedirectUrl($callbackUrl, $state);
 |------|------|------|
 | id | bigint | 主键 |
 | user_id | bigint | 用户ID，关联 users 表 |
-| platform | string(20) | 登录方式：password/wechat/qq（预留） |
+| platform | string(20) | 登录方式：password/wechat/phone/qq（预留） |
 | ip | string(45) | 登录IP |
 | user_agent | string(500) | 浏览器UA |
 | status | tinyint | 0-失败 1-成功 |
@@ -124,7 +140,9 @@ $result = $wechatService->buildOauthRedirectUrl($callbackUrl, $state);
 3. **配置缓存**：修改配置后需执行 `php artisan route:clear && php artisan config:clear`（涉及访问模式时）。
 4. **依赖声明**：本应用无应用依赖（微信能力独立实现），仅依赖 `endroid/qr-code` composer 包。
 5. **微信登录未配置**：调用 `WechatOauthService` 前应先通过 `SettingService::isWechatConfigured()` 检查，未配置时返回友好提示。
-6. **开放重定向防护**：登录跳转地址通过 `isSafeRedirect()` 校验，仅允许站内相对路径或同域绝对地址。
+6. **短信未配置**：调用 `SmsService::sendVerificationCode()` 前应先通过 `SmsService::isConfigured()` 检查，未配置时返回友好提示。
+7. **开放重定向防护**：登录跳转地址通过 `isSafeRedirect()` 校验，仅允许站内相对路径或同域绝对地址。
+8. **短信凭证安全**：短信服务商的 SecretKey 等敏感配置以密文存储，仅平台后台可见，应用内部不得打印日志。
 
 ## 八、版本与更新日志
 
@@ -133,3 +151,5 @@ $result = $wechatService->buildOauthRedirectUrl($callbackUrl, $state);
 | 1.0.0 | 2026-08-13 | 开发团队 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问 |
 | 1.1.0 | 2026-08-13 | 开发团队 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
 | 1.1.1 | 2026-08-13 | 开发团队 | 修复子域名模式：根路径 `/` 跳转登录页；覆盖系统重定向到子域名 |
+| 1.2.1 | 2026-08-25 | 开发团队 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页 |
+| 1.3.0 | 2026-08-25 | 开发团队 | 新增手机验证码登录：`SmsService` 门面 + 阿里云/腾讯云/火山引擎三个发送器，验证码限频/有效期/一次性失效，未注册手机号自动建号 |

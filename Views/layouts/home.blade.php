@@ -40,6 +40,60 @@
             gap: 8px;
         }
         .sso-header .brand i { font-size: 22px; }
+        .sso-nav {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .sso-nav-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 14px;
+            border-radius: var(--radius);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .sso-nav-link:hover {
+            background: #f1f5f9;
+            color: var(--primary);
+        }
+        .sso-nav-item.has-children > .sso-nav-link::after {
+            content: '';
+            display: inline-block;
+            width: 0;
+            height: 0;
+            margin-left: 4px;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 4px solid currentColor;
+        }
+        .sso-nav-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 160px;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(30, 41, 59, 0.12);
+            padding: 6px;
+            display: none;
+            z-index: 1000;
+        }
+        .sso-nav-item.has-children:hover .sso-nav-dropdown {
+            display: block;
+        }
+        .sso-nav-dropdown .sso-nav-link {
+            display: block;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            font-size: 14px;
+        }
         .sso-main {
             flex: 1;
             display: flex;
@@ -102,6 +156,34 @@
             color: #fff;
         }
         .sso-wechat-btn i { font-size: 20px; }
+        .sso-oauth-row {
+            display: flex;
+            gap: 12px;
+        }
+        .sso-oauth-row .sso-wechat-btn {
+            width: auto;
+            flex: 1;
+        }
+        .sso-phone-btn {
+            flex: 1;
+            height: 44px;
+            border: 1px solid #2563eb;
+            color: #2563eb;
+            background: #fff;
+            border-radius: var(--radius);
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .sso-phone-btn:hover {
+            background: #2563eb;
+            color: #fff;
+        }
+        .sso-phone-btn i { font-size: 20px; }
         .sso-link-row {
             display: flex;
             justify-content: space-between;
@@ -121,6 +203,30 @@
 </head>
 <body>
 <header class="sso-header">
+    <nav class="sso-nav">
+        @if(!empty($homeMenus))
+            @foreach($homeMenus as $menu)
+                @if(!empty($menu['children']))
+                    <div class="sso-nav-item has-children">
+                        <a class="sso-nav-link" href="{{ menu_path($menu['path'] ?? '') }}">
+                            @if(!empty($menu['icon']))<i class="layui-icon {{ $menu['icon'] }}"></i>@endif
+                            <span>{{ $menu['name'] }}</span>
+                        </a>
+                        <div class="sso-nav-dropdown">
+                            @foreach($menu['children'] as $child)
+                                <a class="sso-nav-link" href="{{ menu_path($child['path'] ?? '') }}">{{ $child['name'] }}</a>
+                            @endforeach
+                        </div>
+                    </div>
+                @else
+                    <a class="sso-nav-item sso-nav-link" href="{{ menu_path($menu['path'] ?? '') }}">
+                        @if(!empty($menu['icon']))<i class="layui-icon {{ $menu['icon'] }}"></i>@endif
+                        <span>{{ $menu['name'] }}</span>
+                    </a>
+                @endif
+            @endforeach
+        @endif
+    </nav>
     <div class="brand">
         <i class="layui-icon layui-icon-username"></i>
         <span>@yield('brand', '统一登录')</span>

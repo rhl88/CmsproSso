@@ -3,7 +3,9 @@
 namespace App\Apps\CmsproSso;
 
 use App\Models\ConfigItem;
+use App\Services\MenuService;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider as BaseServiceProvider;
 
 class ServiceProvider extends BaseServiceProvider
@@ -26,6 +28,7 @@ class ServiceProvider extends BaseServiceProvider
 
         $this->registerRoutes();
         $this->loadViews();
+        $this->registerHomeMenuComposer();
         $this->registerHooks();
         $this->registerMiddleware();
     }
@@ -100,6 +103,20 @@ class ServiceProvider extends BaseServiceProvider
             base_path('app/Apps/CmsproSso/Views'),
             'cmspro.sso'
         );
+    }
+
+    /**
+     * 向前台布局注入系统前台导航菜单
+     *
+     * 复用系统 MenuService::homeMenus()（terminal_type='home' 的菜单树），
+     * 供 layouts/home.blade.php 头部左侧渲染导航使用。
+     */
+    protected function registerHomeMenuComposer(): void
+    {
+        View::composer('cmspro.sso::layouts.home', function ($view) {
+            $result = app(MenuService::class)->homeMenus();
+            $view->with('homeMenus', $result['data'] ?? []);
+        });
     }
 
     protected function registerHooks(): void

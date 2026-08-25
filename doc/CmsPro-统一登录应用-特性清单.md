@@ -1,7 +1,7 @@
 # 统一登录 · 特性清单
 
-> 版本：1.0.0 | 更新日期：2026-08-13
-> 应用版本：1.0.0 | 应用 ID：`cmspro.sso`
+> 版本：1.1.0 | 更新日期：2026-08-25
+> 应用版本：1.3.0 | 应用 ID：`cmspro.sso`
 
 > 本文档系统整理 CmsPro v5 应用开发框架的全部应用特性，并标注本应用中的对应实现位置，作为应用开发的官方参考。
 
@@ -34,7 +34,7 @@
 |---|------|------|---------|
 | 10 | 后台路由前缀 | `admin/cmspro/sso`，`auth:admin` 保护 | `ServiceProvider::registerRoutes()` |
 | 11 | 前台双模式路由 | 根据 `access_mode` 动态注册 path（`Route::prefix`）或 domain（`Route::domain`） | `ServiceProvider::registerHomeRoutes()` |
-| 12 | 子域名根路径跳转 | 子域名模式下访问绑定域名根路径 `/` 重定向到 `/login` | `Routes/home.php` |
+| 12 | 根路径首页 | 访问根路径 `/` 时，已登录停留首页，未登录重定向到 `/login` | `Routes/home.php` |
 | 12.1 | 找回密码页路由 | `/forgot-password` 公开访问，未配置系统邮箱时重定向登录页 | `Routes/home.php` / `Controllers/Home/AuthController.php` |
 | 13 | 前台 API 全局前缀 | API 始终为 `api/cmspro/sso`，不随访问模式变化 | `ServiceProvider::registerHomeRoutes()` |
 | 14 | 前台认证中间件 | 自定义 `cmspro.sso.auth` 中间件，未登录跳转统一登录页 | `Middleware/FrontAuthMiddleware.php` |
@@ -62,11 +62,22 @@
 
 | # | 特性 | 说明 | 实现位置 |
 |---|------|------|---------|
-| 22 | 配置组声明 | `access_settings` / `wechat_settings` / `login_settings` 三组 | `manifest.json` |
+| 22 | 配置组声明 | `access_settings` / `wechat_settings` / `login_settings` / `phone_settings` 四组 | `manifest.json` |
 | 23 | 配置三向同步 | `seedDefaultConfigs()` 以 manifest 为基准同步 | `Install.php` |
 | 24 | 配置读取服务 | `SettingService::get()` 从 `config_items` 读取，回退默认值 | `Services/SettingService.php` |
 | 25 | 配置白名单 | `ALLOWED_KEYS` 白名单，防止篡改其他配置 | `Services/SettingService.php` |
 | 26 | 配置保存 | `SettingController::update()` 白名单接收 + 清缓存 | `Controllers/Admin/SettingController.php` |
+
+## 六-1、短信服务
+
+| # | 特性 | 说明 | 实现位置 |
+|---|------|------|---------|
+| 26.1 | 短信门面 | `SmsService` 按 `sms_provider` 调度发送器，`isConfigured()` 校验凭证完整性 | `Services/SmsService.php` |
+| 26.2 | 阿里云发送器 | AccessKey 签名 + Dysmsapi 接口，模板变量名 `code` | `Services/Sms/AliyunSmsSender.php` |
+| 26.3 | 腾讯云发送器 | SecretId/SecretKey 签名 + Sms 接口（SDKAppID 验证码模板） | `Services/Sms/TencentSmsSender.php` |
+| 26.4 | 火山引擎发送器 | AccessKey 签名 + 短信消息组接口（SmsAccount） | `Services/Sms/VolcengineSmsSender.php` |
+| 26.5 | 验证码限频 | `RateLimiter` 60 秒/次，5 分钟有效，一次性失效 | `Controllers/HomeApi/AuthController.php` |
+| 26.6 | 未注册自动建号 | 手机号不存在时自动创建用户（用户名取手机号，随机密码不可登录） | `Controllers/HomeApi/AuthController.php::createPhoneUser()` |
 
 ## 七、权限系统
 
@@ -111,3 +122,5 @@
 | 1.1.0 | 2026-08-13 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
 | 1.1.1 | 2026-08-13 | 修复子域名模式：根路径 `/` 跳转登录页；ShareService 从数据库读取访问配置，覆盖系统重定向到子域名 |
 | 1.1.2 | 2026-08-25 | 新增找回密码页（两步验证流程，复用系统密码重置接口）；注册接口接入邮箱验证码校验，与系统注册逻辑一致，未配置邮箱时自动跳过 |
+| 1.2.1 | 2026-08-25 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页 |
+| 1.3.0 | 2026-08-25 | 新增手机验证码登录：短信门面 + 阿里云/腾讯云/火山引擎发送器，验证码限频 60 秒、5 分钟有效、一次性失效，未注册手机号自动建号 |

@@ -86,7 +86,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         }
     });
 
-    // 发送注册邮箱验证码（复用系统公开接口）
+    // 发送注册邮箱验证码（复用系统公开接口；子域名模式下需请求主站域名，避免被 catch-all 拦截）
     $('#sendCodeBtn').on('click', function(){
         var btn = $(this);
         if (btn.hasClass('disabled')) return;
@@ -103,7 +103,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
         btn.text('发送中...').addClass('disabled');
         $.ajax({
-            url: '/api/user/register/email-code',
+            url: @json(main_url('api/user/register/email-code')),
             type: 'POST',
             dataType: 'json',
             contentType: 'application/json',

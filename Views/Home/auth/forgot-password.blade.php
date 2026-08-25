@@ -112,10 +112,10 @@ layui.use(['form', 'jquery', 'layer'], function(){
         return (res && res.message) ? res.message : '请求失败';
     }
 
-    // 请求邮箱验证码（复用系统公开接口）
+    // 请求邮箱验证码（复用系统公开接口；子域名模式下需请求主站域名，避免被 catch-all 拦截）
     function requestCode(email, done, fail) {
         $.ajax({
-            url: '/api/user/password/email-code',
+            url: @json(main_url('api/user/password/email-code')),
             type: 'POST',
             dataType: 'json',
             contentType: 'application/json',
@@ -194,7 +194,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         var btn = $('#resetBtn');
         btn.text('提交中...');
         $.ajax({
-            url: '/api/user/password/reset-by-code',
+            url: @json(main_url('api/user/password/reset-by-code')),
             type: 'POST',
             dataType: 'json',
             contentType: 'application/json',

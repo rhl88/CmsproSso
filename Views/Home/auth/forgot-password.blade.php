@@ -202,7 +202,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             success: function(res){
                 if (res.code === 0) {
                     layer.msg('密码重置成功', {icon: 1, time: 1200}, function(){
-                        window.location.href = {{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/login') }};
+                        window.location.href = @json(\App\Apps\CmsproSso\Services\ShareService::frontUrl('/login'));
                     });
                 } else {
                     layer.msg(extractError(res), {icon: 2});

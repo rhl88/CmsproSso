@@ -101,13 +101,19 @@ class AuthController extends Controller
 
     /**
      * 注册逻辑：创建 User 并自动登录
+     *
+     * 后台已配置邮箱时强制邮箱验证码校验（与系统注册逻辑一致）
      */
     public function register(Request $request): JsonResponse
     {
+        $requireEmailCode = mail_configured();
+
         $validated = $request->validate([
             'username' => 'required|string|min:3|max:30|unique:users,username',
             'password' => 'required|string|min:6|confirmed',
             'nickname' => 'nullable|string|max:50',
+            'email' => ($requireEmailCode ? 'required' : 'nullable') . '|string|max:100|email|unique:users,email',
+            'email_code' => ($requireEmailCode ? 'required' : 'nullable') . '|string|size:6',
         ], [
             'username.required'  => '用户名不能为空',
             'username.min'       => '用户名至少3个字符',
@@ -117,7 +123,19 @@ class AuthController extends Controller
             'password.min'       => '密码至少6个字符',
             'password.confirmed' => '两次输入的密码不一致',
             'nickname.max'       => '昵称不能超过50个字符',
+            'email.required'     => '邮箱地址不能为空',
+            'email.unique'       => '该邮箱已被注册',
+            'email_code.required' => '邮箱验证码不能为空',
+            'email_code.size'    => '邮箱验证码必须是6位',
         ]);
+
+        // 校验注册邮箱验证码：不正确或未输入不予注册（后台未配置邮箱时跳过）
+        if ($requireEmailCode) {
+            $cachedCode = Cache::get('user_register_code:' . $validated['email']);
+            if (! $cachedCode || ! hash_equals((string) $cachedCode, (string) $validated['email_code'])) {
+                return response()->json(['code' => 422, 'message' => '邮箱验证码不正确或已过期'], 422);
+            }
+        }
 
         $defaultGroup = UserGroup::default()->enabled()->first();
 
@@ -125,9 +143,15 @@ class AuthController extends Controller
             'username' => $validated['username'],
             'password' => Hash::make($validated['password']),
             'nickname' => $validated['nickname'] ?? $validated['username'],
+            'email'    => $validated['email'] ?? null,
             'group_id' => $defaultGroup?->id,
             'status'   => 1,
         ]);
+
+        // 注册成功后验证码一次性失效
+        if ($requireEmailCode) {
+            Cache::forget('user_register_code:' . $validated['email']);
+        }
 
         Auth::guard('web')->login($user);
         $request->session()->regenerate();

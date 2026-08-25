@@ -55,6 +55,23 @@ class AuthController extends Controller
         return view('cmspro.sso::Home.auth.register', [
             'login_title' => $this->settingService->get('login_title', '统一登录'),
             'redirect'    => (string) $request->input('redirect', ''),
+            'mailConfigured' => mail_configured(),
+        ]);
+    }
+
+    /**
+     * 找回密码页
+     */
+    public function forgotPasswordForm(Request $request)
+    {
+        // 未配置邮箱时邮件验证码不可用，跳转登录页
+        if (! mail_configured()) {
+            return redirect(ShareService::frontUrl('/login'));
+        }
+
+        return view('cmspro.sso::Home.auth.forgot-password', [
+            'login_title' => $this->settingService->get('login_title', '统一登录'),
+            'redirect'    => (string) $request->input('redirect', ''),
         ]);
     }
 

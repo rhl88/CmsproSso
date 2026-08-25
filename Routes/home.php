@@ -10,6 +10,7 @@ Route::get('/', function () {
 });
 Route::get('/login', [AuthController::class, 'loginForm']);
 Route::get('/register', [AuthController::class, 'registerForm']);
+Route::get('/forgot-password', [AuthController::class, 'forgotPasswordForm']);
 
 // 微信授权回调（公开访问，微信服务器回调）
 Route::get('/auth/wechat/callback', [AuthController::class, 'wechatCallback']);

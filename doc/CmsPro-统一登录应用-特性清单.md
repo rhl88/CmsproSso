@@ -35,6 +35,7 @@
 | 10 | 后台路由前缀 | `admin/cmspro/sso`，`auth:admin` 保护 | `ServiceProvider::registerRoutes()` |
 | 11 | 前台双模式路由 | 根据 `access_mode` 动态注册 path（`Route::prefix`）或 domain（`Route::domain`） | `ServiceProvider::registerHomeRoutes()` |
 | 12 | 子域名根路径跳转 | 子域名模式下访问绑定域名根路径 `/` 重定向到 `/login` | `Routes/home.php` |
+| 12.1 | 找回密码页路由 | `/forgot-password` 公开访问，未配置系统邮箱时重定向登录页 | `Routes/home.php` / `Controllers/Home/AuthController.php` |
 | 13 | 前台 API 全局前缀 | API 始终为 `api/cmspro/sso`，不随访问模式变化 | `ServiceProvider::registerHomeRoutes()` |
 | 14 | 前台认证中间件 | 自定义 `cmspro.sso.auth` 中间件，未登录跳转统一登录页 | `Middleware/FrontAuthMiddleware.php` |
 | 15 | 路由命名 | 后台设置页命名 `admin.cmspro.sso.setting` | `Routes/admin.php` |
@@ -91,6 +92,8 @@
 | 34 | CSRF Token | 前台布局含 `csrf-token` meta，JS 通过 `$.ajaxSetup` 携带 | `Views/layouts/home.blade.php` |
 | 35 | 401 处理 | 前台 JS 统一处理登录过期 | `Views/Home/*.blade.php` |
 | 36 | 前台 API 路径 | `window.SSO_API_BASE` 全局前缀，不随访问模式变化 | `Views/layouts/home.blade.php` |
+| 36.1 | 注册邮箱验证码 | 系统已配置邮箱时注册必填 6 位验证码（复用系统 `/api/user/register/email-code` 接口），验证码一次性失效；未配置邮箱时自动跳过 | `Controllers/HomeApi/AuthController.php` / `Views/Home/auth/register.blade.php` |
+| 36.2 | 找回密码两步流程 | 输入邮箱发送验证码 → 凭验证码重置新密码，成功后跳转登录页；登录页「注册账号」同行右侧显示入口，复用系统 `/api/user/password/*` 接口 | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` |
 | 37 | 前台页面路径 | `window.SSO_BASE` 兼容双模式 | `Views/layouts/home.blade.php` |
 
 ## 十、菜单系统
@@ -107,3 +110,4 @@
 | 1.0.0 | 2026-08-13 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问 |
 | 1.1.0 | 2026-08-13 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
 | 1.1.1 | 2026-08-13 | 修复子域名模式：根路径 `/` 跳转登录页；ShareService 从数据库读取访问配置，覆盖系统重定向到子域名 |
+| 1.1.2 | 2026-08-25 | 新增找回密码页（两步验证流程，复用系统密码重置接口）；注册接口接入邮箱验证码校验，与系统注册逻辑一致，未配置邮箱时自动跳过 |

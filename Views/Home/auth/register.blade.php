@@ -2,6 +2,20 @@
 
 @section('title', '注册账号')
 
+@section('head')
+<style>
+.sso-code-group { display: flex; align-items: center; }
+.sso-code-group .layui-input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.sso-send-btn {
+    width: 110px; height: 38px; line-height: 38px;
+    border-top-left-radius: 0; border-bottom-left-radius: 0;
+    cursor: pointer; font-size: 13px; text-align: center; white-space: nowrap;
+    background: #fff; border: 1px solid #d2d2d2; color: #555;
+}
+.sso-send-btn.disabled { cursor: not-allowed; opacity: 0.6; }
+</style>
+@endsection
+
 @section('content')
 <div class="sso-card">
     <div class="sso-card-title">注册账号</div>
@@ -15,6 +29,19 @@
             <input type="text" name="nickname" placeholder="昵称（可选）"
                    class="layui-input">
         </div>
+        <div class="layui-form-item">
+            <input type="email" name="email" id="emailInput" placeholder="邮箱地址"
+                   autocomplete="email" class="layui-input">
+        </div>
+        @if($mailConfigured)
+        <div class="layui-form-item">
+            <div class="sso-code-group">
+                <input type="text" name="email_code" placeholder="邮箱验证码" maxlength="6"
+                       autocomplete="off" class="layui-input" style="letter-spacing: 4px;">
+                <button type="button" id="sendCodeBtn" class="sso-send-btn">获取验证码</button>
+            </div>
+        </div>
+        @endif
         <div class="layui-form-item">
             <input type="password" name="password" placeholder="密码（至少6个字符）"
                    autocomplete="new-password" class="layui-input" lay-verify="required">
@@ -59,6 +86,67 @@ layui.use(['form', 'jquery', 'layer'], function(){
         }
     });
 
+    // 发送注册邮箱验证码（复用系统公开接口）
+    $('#sendCodeBtn').on('click', function(){
+        var btn = $(this);
+        if (btn.hasClass('disabled')) return;
+
+        var email = $('#emailInput').val();
+        if (!email) {
+            layer.msg('请先填写邮箱地址', {icon: 2});
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            layer.msg('邮箱格式不正确', {icon: 2});
+            return;
+        }
+
+        btn.text('发送中...').addClass('disabled');
+        $.ajax({
+            url: '/api/user/register/email-code',
+            type: 'POST',
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({ email: email }),
+            success: function(res){
+                if (res.code === 0) {
+                    layer.msg(res.message || '验证码已发送', {icon: 1});
+                    var seconds = 60;
+                    var timer = setInterval(function(){
+                        seconds--;
+                        btn.text(seconds + 's 后重发');
+                        if (seconds <= 0) {
+                            clearInterval(timer);
+                            btn.text('获取验证码').removeClass('disabled');
+                        }
+                    }, 1000);
+                } else {
+                    layer.msg(extractError(res), {icon: 2});
+                    btn.text('获取验证码').removeClass('disabled');
+                }
+            },
+            error: function(xhr){
+                layer.msg(extractError(xhr.responseJSON), {icon: 2});
+                btn.text('获取验证码').removeClass('disabled');
+            }
+        });
+    });
+
+    // 从统一响应结构提取用户可读的错误信息
+    function extractError(res) {
+        if (res && res.data && typeof res.data === 'object') {
+            for (var key in res.data) {
+                if (Array.isArray(res.data[key]) && res.data[key].length) {
+                    return res.data[key][0];
+                }
+                if (typeof res.data[key] === 'string' && res.data[key]) {
+                    return res.data[key];
+                }
+            }
+        }
+        return (res && res.message) ? res.message : '请求失败';
+    }
+
     form.on('submit(register-submit)', function(data){
         var loadIdx = layer.load(2);
         $.ajax({
@@ -72,17 +160,12 @@ layui.use(['form', 'jquery', 'layer'], function(){
                         window.location.href = res.data.redirect || '/';
                     });
                 } else {
-                    layer.msg(res.message || '注册失败', {icon: 2});
+                    layer.msg(extractError(res), {icon: 2});
                 }
             },
             error: function(xhr){
                 layer.close(loadIdx);
-                var msg = '请求失败';
-                try {
-                    var res = JSON.parse(xhr.responseText);
-                    if (res.message) msg = res.message;
-                } catch(e) {}
-                layer.msg(msg, {icon: 2});
+                layer.msg(extractError(xhr.responseJSON), {icon: 2});
             }
         });
         return false;

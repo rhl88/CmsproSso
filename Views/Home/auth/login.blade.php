@@ -33,8 +33,12 @@
     <div class="sso-link-row">
         @if($configs['allow_register'] === '1')
         <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/register') . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '') }}">注册账号</a>
-        @endif
+        @else
         <span></span>
+        @endif
+        @if(\mail_configured())
+        <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/forgot-password') . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '') }}">找回密码</a>
+        @endif
     </div>
 
     <div class="sso-tip">登录即代表同意本站服务条款</div>

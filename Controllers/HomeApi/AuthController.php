@@ -211,12 +211,35 @@ class AuthController extends Controller
 
         $validated = $request->validate([
             'phone' => 'required|string|regex:/^1\d{10}$/',
+            'invite_code' => 'nullable|string|max:32',
         ], [
             'phone.required' => '请输入手机号',
             'phone.regex'    => '手机号格式不正确',
         ]);
 
         $phone = $validated['phone'];
+
+        // 邀请注册开启时，获取验证码前先确认手机号账号是否存在：
+        // 已存在 → 正常发送验证码登录；不存在 → 需凭有效邀请码获取验证码走注册步骤
+        if ($this->settingService->get('invite_enabled', '0') === '1'
+            && ! User::where('phone', $phone)->exists()) {
+            $inviteCode = strtoupper(trim((string) $request->input('invite_code', '')));
+
+            if ($inviteCode === '') {
+                return response()->json([
+                    'code'    => 422,
+                    'message' => '该手机号未注册，注册新账号需要邀请码',
+                    'data'    => ['need_invite' => true],
+                ], 422);
+            }
+
+            // 预校验邀请码可用性（不消费，建号时才消费）
+            $error = $this->checkInviteCodeUsable($inviteCode);
+            if ($error !== null) {
+                return response()->json(['code' => 422, 'message' => $error], 422);
+            }
+        }
+
         $throttleKey = 'cmspro_sso_sms_throttle:' . $phone;
 
         if (RateLimiter::tooManyAttempts($throttleKey, self::PHONE_CODE_MAX_ATTEMPTS)) {

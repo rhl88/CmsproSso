@@ -210,7 +210,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             + '<div id="phone-invite-tip" style="display: none; color: #ff5722; font-size: 12px; margin-bottom: 5px;">该手机号未注册，注册新账号需要邀请码</div>'
             + '</form>';
 
-        layer.open({
+        phoneInviteModalIdx = layer.open({
             type: 1,
             title: '手机验证码登录',
             area: ['360px', '225px'],
@@ -236,7 +236,10 @@ layui.use(['form', 'jquery', 'layer'], function(){
             $.ajax({
                 url: window.SSO_API_BASE + '/auth/phone/code',
                 type: 'POST',
-                data: { phone: phone },
+                data: {
+                    phone: phone,
+                    invite_code: $.trim($('#phone-login-invite').val() || '')
+                },
                 success: function(res){
                     layer.close(loadIdx);
                     if (res.code === 0) {
@@ -260,14 +263,31 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 error: function(xhr){
                     layer.close(loadIdx);
                     var msg = '请求失败';
+                    var needInvite = false;
                     try {
                         var res = JSON.parse(xhr.responseText);
                         if (res.message) msg = res.message;
+                        needInvite = !!(res.data && res.data.need_invite);
                     } catch(e) {}
                     layer.msg(msg, {icon: 2});
+                    // 新手机号且开启邀请注册：显示邀请码输入框，填好后重新获取验证码
+                    if (needInvite) {
+                        $('#phone-invite-tip').text('该手机号未注册，请先填写邀请码，再获取验证码完成注册');
+                        showPhoneInviteField();
+                    }
                 }
             });
         });
+    }
+
+    // 邀请注册：手机登录弹窗中展开邀请码输入框（新手机号需补填邀请码后重新获取验证码）
+    var phoneInviteModalIdx = 0;
+    function showPhoneInviteField(){
+        $('#phone-invite-item, #phone-invite-tip').show();
+        if (phoneInviteModalIdx) {
+            layer.style(phoneInviteModalIdx, { area: ['360px', '300px'] });
+        }
+        $('#phone-login-invite').focus();
     }
 
     // 手机验证码登录提交
@@ -313,10 +333,10 @@ layui.use(['form', 'jquery', 'layer'], function(){
                     needInvite = !!(res.data && res.data.need_invite);
                 } catch(e) {}
                 layer.msg(msg, {icon: 2});
-                // 新手机号且开启邀请注册：显示邀请码输入框，引导用户补填后重新提交
+                // 兜底：新手机号且开启邀请注册（正常应在获取验证码阶段拦截），显示邀请码输入框
                 if (needInvite) {
-                    $('#phone-invite-item, #phone-invite-tip').show();
-                    $('#phone-login-invite').focus();
+                    $('#phone-invite-tip').text('该手机号未注册，请先填写邀请码，再获取验证码完成注册');
+                    showPhoneInviteField();
                 }
             }
         });

@@ -118,6 +118,7 @@
 | 42 | 邀请注册闭环 | 注册/手机验证码登录（新号）需邀请码，事务内原子消费（防并发重复使用），消费失败整体回滚 | `HomeApi/AuthController` |
 | 43 | 邀请码购买 | 游客可访问购买页，经 Onlinepay 创建支付订单（SSOINV_ 前缀），`OrderPaid` 事件监听自动发放邀请码，前端轮询展示并复制 | `Views/Home/invite/buy.blade.php` / `Listeners/HandleInviteOrderPaid` |
 | 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
+| 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
 
 ## 十一、版本历史
 
@@ -131,4 +132,4 @@
 | 1.3.0 | 2026-08-25 | 新增手机验证码登录：短信门面 + 阿里云/腾讯云/火山引擎发送器，验证码限频 60 秒、5 分钟有效、一次性失效，未注册手机号自动建号 |
 | 1.3.1 | 2026-08-31 | 新增邀请注册设置（开关 + 发放方式：在线购买/指定URL/文字提示联动表单）；菜单新增「邀请码管理」入口 |
 | 1.4.0 | 2026-08-31 | 新增邀请码管理：`app_cmspro_sso_invite_codes` 表、列表/批量生成/启停/删除后台页面与 API |
-| 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示 |
+| 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示；在线购买模式增加 Onlinepay 安装/启用依赖校验 |

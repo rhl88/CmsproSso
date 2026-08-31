@@ -116,6 +116,20 @@
                                     <div class="layui-form-mid layui-word-aux">选择邀请码的发放渠道，切换后仅显示对应设置</div>
                                 </div>
                             </div>
+                            <div class="layui-form-item" id="onlinepay-status-item" style="{{ (($configs['invite_grant_mode'] ?? 'online_buy') === 'online_buy' && !($onlinepay_enabled ?? false)) ? '' : 'display:none;' }}">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                        在线购买模式依赖「在线支付」应用：
+                                        @if(!($onlinepay_installed ?? false))
+                                        当前<strong>未安装</strong>，请前往「应用管理」安装「在线支付」应用并启用。
+                                        @elseif(!($onlinepay_enabled ?? false))
+                                        当前已安装但<strong>未启用</strong>，请前往「应用管理」启用「在线支付」应用。
+                                        @endif
+                                        依赖就绪前无法保存在线购买模式。
+                                    </div>
+                                </div>
+                            </div>
                             <div class="layui-form-item" id="invite-price-item" style="{{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'online_buy' ? '' : 'display:none;' }}">
                                 <label class="layui-form-label">邀请码费用</label>
                                 <div class="layui-input-block">
@@ -358,8 +372,10 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     toggleAccessFields($('#access_mode').val());
 
     // 邀请码发放方式联动：仅显示对应设置
+    var onlinepayReady = @json((bool) ($onlinepay_enabled ?? false));
     function toggleInviteFields(mode) {
         $('#invite-price-item').toggle(mode === 'online_buy');
+        $('#onlinepay-status-item').toggle(mode === 'online_buy' && !onlinepayReady);
         $('#invite-url-item').toggle(mode === 'url');
         $('#invite-text-item').toggle(mode === 'text');
     }

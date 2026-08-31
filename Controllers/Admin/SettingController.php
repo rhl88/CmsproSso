@@ -3,6 +3,8 @@
 namespace App\Apps\CmsproSso\Controllers\Admin;
 
 use App\Apps\CmsproSso\Services\SettingService;
+use App\Enums\AppStatus;
+use App\Models\AppModel;
 use App\Models\ConfigGroup;
 use App\Models\ConfigItem;
 use Illuminate\Http\Request;
@@ -36,7 +38,14 @@ class SettingController extends Controller
             $configs[$key] = $item ? $item->value : config('apps.cmspro.sso.' . $key, '');
         }
 
-        return view('cmspro.sso::Admin.settings.index', compact('configs'));
+        // Onlinepay（在线支付）安装/启用状态：邀请码"在线购买"模式的前置依赖
+        $onlinepay = AppModel::where('app_id', 'onlinepay')->first();
+
+        return view('cmspro.sso::Admin.settings.index', [
+            'configs'             => $configs,
+            'onlinepay_installed' => $onlinepay !== null,
+            'onlinepay_enabled'   => $onlinepay !== null && $onlinepay->status === AppStatus::ENABLED,
+        ]);
     }
 
     /**
@@ -105,8 +114,15 @@ class SettingController extends Controller
 
         // 邀请注册启用时按发放方式校验对应表单
         if (($data['invite_enabled'] ?? '0') === '1') {
-            if ($grantMode === 'online_buy' && !is_numeric($data['invite_price'] ?? null)) {
-                return response()->json(['code' => 400, 'message' => '在线购买模式必须填写邀请码费用（数字）'], 400);
+            if ($grantMode === 'online_buy') {
+                if (!is_numeric($data['invite_price'] ?? null)) {
+                    return response()->json(['code' => 400, 'message' => '在线购买模式必须填写邀请码费用（数字）'], 400);
+                }
+                // 在线购买依赖 Onlinepay 应用，未安装/未启用时禁止保存
+                $onlinepay = AppModel::where('app_id', 'onlinepay')->first();
+                if (!$onlinepay || $onlinepay->status !== AppStatus::ENABLED) {
+                    return response()->json(['code' => 400, 'message' => '在线购买模式依赖「在线支付」应用，请先安装并启用后再保存'], 400);
+                }
             }
             if ($grantMode === 'url') {
                 $inviteUrl = trim((string) ($data['invite_url'] ?? ''));

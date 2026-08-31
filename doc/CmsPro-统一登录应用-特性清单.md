@@ -119,6 +119,7 @@
 | 43 | 邀请码购买 | 游客可访问购买页，经 Onlinepay 创建支付订单（SSOINV_ 前缀），`OrderPaid` 事件监听自动发放邀请码，前端轮询展示并复制 | `Views/Home/invite/buy.blade.php` / `Listeners/HandleInviteOrderPaid` |
 | 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
 | 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
+| 46 | 微信登录邀请码收集 | 邀请注册开启时，微信登录（微信内授权 + PC 扫码）登录前弹窗收集邀请码：获取授权 URL 预校验不消费；回调建号事务内消费，已绑定老用户不消费；PC 扫码失败经 `login-status` 返回 422，微信端 `pc-success?result=failed` 显示失败态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/pc-success.blade.php` |
 
 ## 十一、版本历史
 

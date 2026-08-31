@@ -66,6 +66,8 @@ layui.use(['form', 'jquery', 'layer'], function(){
     });
 
     var redirect = @json($redirect);
+    // 邀请注册开关（微信/手机登录收集邀请码用）
+    var inviteEnabled = {{ ($configs['invite_enabled'] ?? '0') === '1' ? 'true' : 'false' }};
 
     // 回车提交登录表单
     $('form[lay-filter="login-form"]').on('keydown', function(e){
@@ -110,9 +112,22 @@ layui.use(['form', 'jquery', 'layer'], function(){
         var isWechat = /MicroMessenger/i.test(navigator.userAgent);
         var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+        // 邀请注册开启时：先收集邀请码再发起微信授权
+        if (inviteEnabled) {
+            openInviteModal(function(inviteCode){
+                proceedWechatLogin(inviteCode, isWechat, isMobile);
+            });
+            return;
+        }
+
+        proceedWechatLogin('', isWechat, isMobile);
+    });
+
+    // 邀请注册模式下，收集邀请码后继续微信登录流程
+    function proceedWechatLogin(inviteCode, isWechat, isMobile){
         // 微信内：直接跳转授权
         if (isWechat) {
-            wechatLogin('', function(url){
+            wechatLogin('', inviteCode, function(url){
                 window.location.href = url;
             });
             return;
@@ -120,7 +135,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
         // PC 端：弹出二维码扫码
         if (!isMobile) {
-            wechatLogin('pc', function(url, state){
+            wechatLogin('pc', inviteCode, function(url, state){
                 openQrModal(url, state);
             });
             return;
@@ -133,7 +148,33 @@ layui.use(['form', 'jquery', 'layer'], function(){
             content: '请在微信中打开本页面进行登录',
             btn: ['知道了']
         });
-    });
+    }
+
+    // 邀请码输入弹窗（微信登录用）
+    function openInviteModal(callback){
+        layer.open({
+            type: 1,
+            title: '微信登录',
+            area: ['360px', '190px'],
+            content: '<div style="padding: 20px 24px 0;">'
+                + '<p style="color: #666; font-size: 13px; margin-bottom: 10px;">本站开启邀请注册，请输入邀请码后继续微信登录</p>'
+                + '<input type="text" id="wechat-invite-input" placeholder="请输入邀请码" maxlength="32" class="layui-input" autocomplete="off">'
+                + '</div>',
+            btn: ['继续登录'],
+            success: function(){
+                $('#wechat-invite-input').focus();
+            },
+            yes: function(idx){
+                var code = $.trim($('#wechat-invite-input').val());
+                if (code === '') {
+                    layer.msg('请输入邀请码', {icon: 2});
+                    return;
+                }
+                layer.close(idx);
+                callback(code.toUpperCase());
+            }
+        });
+    }
 
     // 手机验证码登录
     $('#phone-login-btn').on('click', function(){
@@ -142,7 +183,6 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
     // 弹出手机验证码登录弹窗
     function openPhoneLoginModal(){
-        var inviteEnabled = {{ ($configs['invite_enabled'] ?? '0') === '1' ? 'true' : 'false' }};
         var inviteField = inviteEnabled
             ? '<div class="layui-form-item">'
               + '<input type="text" name="invite_code" id="phone-login-invite" placeholder="邀请码（新手机号注册需填写）" maxlength="32" class="layui-input" autocomplete="off">'
@@ -265,12 +305,12 @@ layui.use(['form', 'jquery', 'layer'], function(){
     }
 
     // 获取微信授权 URL
-    function wechatLogin(device, callback){
+    function wechatLogin(device, inviteCode, callback){
         var loadIdx = layer.load(2);
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/login-url',
             type: 'GET',
-            data: { device: device },
+            data: { device: device, invite_code: inviteCode || '' },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -321,6 +361,19 @@ layui.use(['form', 'jquery', 'layer'], function(){
                         layer.msg('登录成功', {icon: 1, time: 1000}, function(){
                             window.location.href = res.data.redirect || '/';
                         });
+                    }
+                },
+                error: function(xhr){
+                    // 扫码确认后建号失败（如邀请码已被使用）：停止轮询并提示
+                    if (xhr.status === 422) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        var msg = '登录失败';
+                        try {
+                            var res = JSON.parse(xhr.responseText);
+                            if (res.message) msg = res.message;
+                        } catch(e) {}
+                        layer.msg(msg, {icon: 2, time: 2500});
                     }
                 }
             });

@@ -162,7 +162,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 $.ajax({
                     url: window.SSO_API_BASE + '/auth/wechat/invite',
                     type: 'POST',
-                    data: { token: inviteToken, invite_code: code.toUpperCase() },
+                    data: { token: inviteToken, invite_code: code.toUpperCase(), redirect: redirect },
                     success: function(res){
                         layer.close(loadIdx);
                         if (res.code === 0) {
@@ -348,7 +348,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/login-url',
             type: 'GET',
-            data: { device: device },
+            data: { device: device, redirect: redirect },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {

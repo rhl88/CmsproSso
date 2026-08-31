@@ -29,6 +29,8 @@ class AuthController extends Controller
 
     // Session 键：微信授权 state（CSRF 防护）
     protected const SESSION_OAUTH_STATE = 'cmspro_sso_wechat_oauth_state';
+    // Session 键：微信登录跳转地址（授权跳微信后会丢失 query，暂存 session 供回调使用）
+    protected const SESSION_OAUTH_REDIRECT = 'cmspro_sso_wechat_oauth_redirect';
 
     // Cache 键前缀：PC 扫码登录 state + 登录结果（跨设备扫码场景）
     protected const CACHE_LOGIN_STATE_PREFIX = 'cmspro_sso_login_state:';
@@ -337,7 +339,7 @@ class AuthController extends Controller
             'message' => '登录成功',
             'data'    => [
                 'redirect' => $isNew
-                    ? ShareService::frontUrl('/auth/wechat/complete')
+                    ? $this->completeUrl((string) $request->input('redirect', ''))
                     : $this->resolveRedirect($request),
                 'is_new'   => $isNew,
             ],
@@ -444,8 +446,9 @@ class AuthController extends Controller
             // PC 扫码模式：state 存 Cache（跨设备，回调时 PC 端 session 不可用）
             Cache::put(self::CACHE_LOGIN_STATE_PREFIX . $state, true, self::LOGIN_STATE_TTL);
         } else {
-            // 普通模式（微信内）：state 存 session
+            // 普通模式（微信内）：state 存 session，跳转地址暂存 session（回调后使用）
             $request->session()->put(self::SESSION_OAUTH_STATE, $state);
+            $request->session()->put(self::SESSION_OAUTH_REDIRECT, trim((string) $request->input('redirect', '')));
         }
 
         // 外挂模式：构建跳转到外挂脚本的 URL
@@ -566,16 +569,24 @@ class AuthController extends Controller
         }
 
         // 普通模式（微信内）：新用户且开启邀请注册时，redirect 到微信端邀请码填写页
+        // 登录页携带的跳转地址已在授权前暂存 session，此处取回并继续透传
+        $redirect = (string) $request->session()->pull(self::SESSION_OAUTH_REDIRECT, '');
+
         if ($needInvite) {
             $token = bin2hex(random_bytes(16));
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
 
-            return redirect(ShareService::frontUrl('/auth/wechat/complete-invite?token=' . $token));
+            $inviteUrl = ShareService::frontUrl('/auth/wechat/complete-invite?token=' . $token);
+            if ($redirect !== '') {
+                $inviteUrl .= '&redirect=' . urlencode($redirect);
+            }
+
+            return redirect($inviteUrl);
         }
 
         // 老用户或未开启邀请注册：login 并 redirect
         try {
-            return $this->loginOrCreateUser($request, $data);
+            return $this->loginOrCreateUser($request, $data, '', $redirect);
         } catch (\RuntimeException $e) {
             abort(400, $e->getMessage() . '，请返回登录页重试');
         }
@@ -645,7 +656,7 @@ class AuthController extends Controller
                 'logged_in' => true,
                 'is_new'    => $isNew,
                 'redirect'  => $isNew
-                    ? ShareService::frontUrl('/auth/wechat/complete')
+                    ? $this->completeUrl((string) $request->input('redirect', ''))
                     : $this->resolveRedirect($request),
             ],
         ]);
@@ -715,8 +726,10 @@ class AuthController extends Controller
      *
      * @param Request $request
      * @param array $data 必须包含 openid，可选 unionid/nickname/avatar/access_token/refresh_token/raw_data
+     * @param string $inviteCode 微信登录携带的邀请码（可为空）
+     * @param string $redirect 登录页携带的跳转地址（可为空，空时按请求参数解析）
      */
-    protected function loginOrCreateUser(Request $request, array $data, string $inviteCode = '')
+    protected function loginOrCreateUser(Request $request, array $data, string $inviteCode = '', string $redirect = '')
     {
         try {
             [$user, $isNew] = $this->resolveOrCreateUser($data, $inviteCode);
@@ -731,12 +744,12 @@ class AuthController extends Controller
 
         $this->writeLoginLog($user->id, 'wechat', $request, 1, '微信登录成功');
 
-        // 首次微信登录需完善资料（手机号、昵称）
+        // 首次微信登录需完善资料（手机号、昵称），跳转地址随 URL 继续透传
         if ($isNew) {
-            return redirect(ShareService::frontUrl('/auth/wechat/complete'));
+            return redirect($this->completeUrl($redirect));
         }
 
-        return redirect($this->resolveRedirect($request));
+        return redirect($this->resolveRedirect($request, $redirect));
     }
 
     /**
@@ -800,7 +813,7 @@ class AuthController extends Controller
             'message' => '登录成功',
             'data'    => [
                 'redirect' => $isNew
-                    ? ShareService::frontUrl('/auth/wechat/complete')
+                    ? $this->completeUrl((string) $request->input('redirect', ''))
                     : $this->resolveRedirect($request),
             ],
         ]);
@@ -994,15 +1007,34 @@ class AuthController extends Controller
 
     /**
      * 解析登录成功后的跳转地址
+     *
+     * @param string $fallback 请求参数未携带时的兜底地址（如微信授权前暂存的跳转地址）
      */
-    protected function resolveRedirect(Request $request): string
+    protected function resolveRedirect(Request $request, string $fallback = ''): string
     {
         $redirect = trim((string) $request->input('redirect', ''));
+        if ($redirect === '' && $fallback !== '') {
+            $redirect = $fallback;
+        }
+
         if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
             return $redirect;
         }
 
         return $this->settingService->getDefaultRedirect();
+    }
+
+    /**
+     * 首次登录完善资料页地址（携带跳转地址继续透传）
+     */
+    protected function completeUrl(string $redirect = ''): string
+    {
+        $url = ShareService::frontUrl('/auth/wechat/complete');
+        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
+            $url .= '?redirect=' . urlencode($redirect);
+        }
+
+        return $url;
     }
 
     /**

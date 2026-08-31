@@ -52,7 +52,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/complete',
             type: 'POST',
-            data: data.field,
+            data: $.extend({}, data.field, { redirect: redirect }),
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {

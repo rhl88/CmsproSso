@@ -48,7 +48,7 @@ layui.use(['jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/invite',
             type: 'POST',
-            data: { token: token, invite_code: code.toUpperCase() },
+            data: { token: token, invite_code: code.toUpperCase(), redirect: redirect },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {

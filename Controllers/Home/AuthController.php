@@ -165,10 +165,30 @@ class AuthController extends Controller
     protected function resolveRedirect(Request $request): string
     {
         $redirect = trim((string) $request->input('redirect', ''));
-        if ($redirect !== '' && str_starts_with($redirect, '/') && !str_starts_with($redirect, '//')) {
+        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
             return $redirect;
         }
 
         return $this->settingService->getDefaultRedirect();
+    }
+
+    /**
+     * 校验跳转地址是否为站内安全地址（相对路径或同域/子域绝对地址，防止开放重定向）
+     */
+    protected function isSafeRedirect(string $url): bool
+    {
+        // 相对路径（站内）
+        if (str_starts_with($url, '/') && !str_starts_with($url, '//')) {
+            return true;
+        }
+
+        // 绝对地址需校验 host 与当前站点一致
+        $host = parse_url($url, PHP_URL_HOST);
+        if ($host === null) {
+            return false;
+        }
+
+        $currentHost = request()->getHost();
+        return $host === $currentHost || str_ends_with($host, '.' . $currentHost);
     }
 }

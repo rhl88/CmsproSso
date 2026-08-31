@@ -120,6 +120,7 @@
 | 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
 | 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
 | 46 | 微信登录邀请码收集 | 邀请注册开启时，先授权确认账号存在性：已绑定老用户直接登录；仅新微信用户在授权后收集邀请码——微信内授权 redirect 到 `complete-invite` 页填写，PC 扫码经 `login-status` 返回 `need_invite` 弹窗收集，均凭一次性 token 提交 `/auth/wechat/invite` 建号并事务内消费邀请码；微信端 `pc-success?result=invite/failed` 显示对应状态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete-invite.blade.php` / `Views/Home/auth/pc-success.blade.php` |
+| 47 | 登录跳转 redirect 透传 | 登录 URL 携带 `redirect` 参数时，所有登录方式成功后均跳转到该地址（安全校验：仅允许相对路径与同域/子域绝对地址，外部域名回退默认跳转）：账号密码/注册随表单提交；手机验证码登录随登录请求；PC 扫码随 `login-status` 轮询与邀请码弹窗提交；微信内授权经 session 暂存（`login-url` 暂存、回调取回）；新用户完善资料页经 URL query 透传继续跳转 | `HomeApi/AuthController` / `Home/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete.blade.php` / `Views/Home/auth/complete-invite.blade.php` |
 
 ## 十一、版本历史
 
@@ -136,3 +137,4 @@
 | 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示；在线购买模式增加 Onlinepay 安装/启用依赖校验 |
 | 1.5.1 | 2026-08-31 | 邀请码收集时机调整：登录授权前不再收集邀请码，改为先确认账号存在性——手机/微信老用户直接登录，仅新用户（服务端 `need_invite`）在授权后补填邀请码；微信端新增 `complete-invite` 填写页，PC 扫码弹窗与手机登录弹窗均改为动态显示邀请码输入框 |
 | 1.5.2 | 2026-08-31 | 手机登录检测前移：获取验证码阶段即检测账号存在性，邀请注册开启时新手机号需先填写有效邀请码（预校验不消费）才发送验证码，前端弹窗动态展开邀请码输入框；老手机号不受影响直接发送 |
+| 1.5.3 | 2026-08-31 | 登录跳转 redirect 全链路透传：登录 URL 携带 `redirect` 时，账号密码/手机验证码/微信扫码/微信内授权登录成功后均跳转到该地址（仅允许相对路径与同域/子域地址，防开放重定向）；微信内授权经 session 暂存跳转地址，新用户完善资料页经 URL query 继续透传 |

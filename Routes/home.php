@@ -1,6 +1,7 @@
 <?php
 
 use App\Apps\CmsproSso\Controllers\Home\AuthController;
+use App\Apps\CmsproSso\Controllers\Home\InviteController;
 use Illuminate\Support\Facades\Route;
 
 // 前台统一登录页面路由（公开访问）

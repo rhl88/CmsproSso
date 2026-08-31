@@ -1,6 +1,7 @@
 <?php
 
 use App\Apps\CmsproSso\Controllers\HomeApi\AuthController;
+use App\Apps\CmsproSso\Controllers\HomeApi\InviteController;
 use App\Apps\CmsproSso\Controllers\HomeApi\QrCodeController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +21,11 @@ Route::post('/auth/wechat/complete', [AuthController::class, 'completeProfile'])
 // 手机验证码登录 API
 Route::post('/auth/phone/code', [AuthController::class, 'sendPhoneCode']);
 Route::post('/auth/phone/login', [AuthController::class, 'phoneLogin']);
+
+// 邀请码购买 API（游客可访问，仅在线购买模式开启时可用）
+Route::get('/invite/channels', [InviteController::class, 'channels']);
+Route::post('/invite/order', [InviteController::class, 'createOrder']);
+Route::get('/invite/order/status', [InviteController::class, 'status']);
 
 // 需登录的 API
 Route::middleware('cmspro.sso.auth')->group(function () {

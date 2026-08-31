@@ -2,7 +2,7 @@
     "id": "cmspro.sso",
     "name": "统一登录",
     "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信等社交化登录（当前实现微信登录，预留 QQ 等扩展）。仅对当前系统使用，不对外开放。支持子域名绑定与目录访问。",
-    "version": "1.3.0",
+    "version": "1.5.0",
     "icon": "fa fa-sign-in",
     "author": "CmsPro",
     "require": {
@@ -26,11 +26,18 @@
             "order": 95,
             "children": [
                 {
+                    "title": "邀请码管理",
+                    "icon": "fa fa-ticket",
+                    "path": "/admin/cmspro/sso/invite",
+                    "code": "admin_cmspro_sso_invite",
+                    "order": 1
+                },
+                {
                     "title": "登录设置",
                     "icon": "fa fa-cog",
                     "path": "/admin/cmspro/sso/setting",
                     "code": "admin_cmspro_sso_setting",
-                    "order": 1
+                    "order": 2
                 }
             ]
         }
@@ -39,6 +46,7 @@
         "/sso/login": "统一登录页",
         "/sso/register": "统一注册页",
         "/sso/forgot-password": "找回密码页",
+        "/sso/invite/buy": "邀请码购买页",
         "/sso/auth/wechat/callback": "微信授权回调",
         "/sso/auth/wechat/pc-success": "PC扫码登录成功页"
     },
@@ -152,6 +160,52 @@
                     "type": "text",
                     "value": "/",
                     "tips": "登录成功后未指定 redirect 参数时的默认跳转地址"
+                }
+            ]
+        },
+        {
+            "name": "invite_settings",
+            "title": "邀请注册设置",
+            "items": [
+                {
+                    "name": "invite_enabled",
+                    "title": "启用邀请注册",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "开启后前台注册需使用邀请码"
+                },
+                {
+                    "name": "invite_grant_mode",
+                    "title": "邀请码发放方式",
+                    "type": "select",
+                    "value": "online_buy",
+                    "options": [
+                        {"label": "在线购买", "value": "online_buy"},
+                        {"label": "指定URL", "value": "url"},
+                        {"label": "文字提示", "value": "text"}
+                    ],
+                    "tips": "选择邀请码的发放渠道，同一时间仅一种生效"
+                },
+                {
+                    "name": "invite_price",
+                    "title": "邀请码费用",
+                    "type": "text",
+                    "value": "",
+                    "tips": "在线购买模式下单个邀请码的售价（元）"
+                },
+                {
+                    "name": "invite_url",
+                    "title": "获取链接",
+                    "type": "text",
+                    "value": "",
+                    "tips": "指定URL模式下，前台展示该链接引导用户前往获取邀请码"
+                },
+                {
+                    "name": "invite_text",
+                    "title": "文字提示",
+                    "type": "textarea",
+                    "value": "",
+                    "tips": "文字提示模式下，前台注册页展示该提示内容"
                 }
             ]
         },

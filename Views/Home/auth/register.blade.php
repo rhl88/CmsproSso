@@ -50,6 +50,26 @@
             <input type="password" name="password_confirmation" placeholder="确认密码"
                    autocomplete="new-password" class="layui-input" lay-verify="required">
         </div>
+        @if(!empty($invite['enabled']))
+        <div class="layui-form-item">
+            <input type="text" name="invite_code" placeholder="邀请码"
+                   autocomplete="off" class="layui-input" lay-verify="required" style="letter-spacing: 2px;">
+        </div>
+        @if($invite['mode'] === 'online_buy' && !empty($invite['buyable']))
+        <div class="layui-form-item" style="margin-top: -8px;">
+            <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/invite/buy') }}"
+               style="font-size: 13px; color: #2563eb;">没有邀请码？立即购买（¥{{ number_format($invite['price'], 2) }} / 个）</a>
+        </div>
+        @elseif($invite['mode'] === 'url' && !empty($invite['url']))
+        <div class="layui-form-item" style="margin-top: -8px;">
+            <a href="{{ $invite['url'] }}" target="_blank" style="font-size: 13px; color: #2563eb;">没有邀请码？前往获取</a>
+        </div>
+        @elseif($invite['mode'] === 'text' && !empty($invite['text']))
+        <div class="layui-form-item" style="margin-top: -8px; font-size: 13px; color: #999; line-height: 1.6;">
+            {{ $invite['text'] }}
+        </div>
+        @endif
+        @endif
         <div class="layui-form-item">
             <button type="button" class="layui-btn layui-btn-fluid" lay-submit lay-filter="register-submit"
                     style="background: #2563eb; height: 44px; font-size: 15px;">

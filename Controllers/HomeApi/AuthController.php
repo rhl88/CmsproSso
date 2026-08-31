@@ -2,6 +2,7 @@
 
 namespace App\Apps\CmsproSso\Controllers\HomeApi;
 
+use App\Apps\CmsproSso\Models\InviteCode;
 use App\Apps\CmsproSso\Models\LoginLog;
 use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -115,6 +117,7 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         $requireEmailCode = mail_configured();
+        $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
 
         $validated = $request->validate([
             'username' => 'required|string|min:3|max:30|unique:users,username',
@@ -122,6 +125,7 @@ class AuthController extends Controller
             'nickname' => 'nullable|string|max:50',
             'email' => ($requireEmailCode ? 'required' : 'nullable') . '|string|max:100|email|unique:users,email',
             'email_code' => ($requireEmailCode ? 'required' : 'nullable') . '|string|size:6',
+            'invite_code' => ($inviteRequired ? 'required' : 'nullable') . '|string|max:32',
         ], [
             'username.required'  => '用户名不能为空',
             'username.min'       => '用户名至少3个字符',
@@ -135,6 +139,7 @@ class AuthController extends Controller
             'email.unique'       => '该邮箱已被注册',
             'email_code.required' => '邮箱验证码不能为空',
             'email_code.size'    => '邮箱验证码必须是6位',
+            'invite_code.required' => '请输入邀请码',
         ]);
 
         // 校验注册邮箱验证码：不正确或未输入不予注册（后台未配置邮箱时跳过）
@@ -147,14 +152,30 @@ class AuthController extends Controller
 
         $defaultGroup = UserGroup::default()->enabled()->first();
 
-        $user = User::create([
-            'username' => $validated['username'],
-            'password' => Hash::make($validated['password']),
-            'nickname' => $validated['nickname'] ?? $validated['username'],
-            'email'    => $validated['email'] ?? null,
-            'group_id' => $defaultGroup?->id,
-            'status'   => 1,
-        ]);
+        // 事务保证：用户创建与邀请码消费原子生效，消费失败整体回滚
+        try {
+            $user = DB::transaction(function () use ($validated, $defaultGroup, $inviteRequired) {
+                $user = User::create([
+                    'username' => $validated['username'],
+                    'password' => Hash::make($validated['password']),
+                    'nickname' => $validated['nickname'] ?? $validated['username'],
+                    'email'    => $validated['email'] ?? null,
+                    'group_id' => $defaultGroup?->id,
+                    'status'   => 1,
+                ]);
+
+                if ($inviteRequired) {
+                    $error = $this->consumeInviteCode($validated['invite_code'], $user->id);
+                    if ($error !== null) {
+                        throw new \RuntimeException($error);
+                    }
+                }
+
+                return $user;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
+        }
 
         // 注册成功后验证码一次性失效
         if ($requireEmailCode) {
@@ -230,6 +251,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'phone' => 'required|string|regex:/^1\d{10}$/',
             'code'  => 'required|string|size:6',
+            'invite_code' => 'nullable|string|max:32',
         ], [
             'phone.required' => '请输入手机号',
             'phone.regex'    => '手机号格式不正确',
@@ -249,9 +271,30 @@ class AuthController extends Controller
 
         $user = User::where('phone', $phone)->first();
         $isNew = $user === null;
+        $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
 
         if ($isNew) {
-            $user = $this->createPhoneUser($phone);
+            // 邀请注册开启时，新手机号自动建号也需邀请码
+            if ($inviteRequired && empty($validated['invite_code'])) {
+                return response()->json(['code' => 422, 'message' => '注册新账号需要邀请码'], 422);
+            }
+
+            try {
+                $user = DB::transaction(function () use ($phone, $validated, $inviteRequired) {
+                    $user = $this->createPhoneUser($phone);
+
+                    if ($inviteRequired) {
+                        $error = $this->consumeInviteCode($validated['invite_code'], $user->id);
+                        if ($error !== null) {
+                            throw new \RuntimeException($error);
+                        }
+                    }
+
+                    return $user;
+                });
+            } catch (\RuntimeException $e) {
+                return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
+            }
         }
 
         Auth::guard('web')->login($user);
@@ -697,6 +740,38 @@ class AuthController extends Controller
             'message' => '资料已完善',
             'data'    => ['redirect' => $this->resolveRedirect($request)],
         ]);
+    }
+
+    /**
+     * 校验并消费邀请码（原子更新防并发重复使用）
+     *
+     * @param string $code 用户输入的邀请码
+     * @param int $userId 消费该邀请码的用户ID
+     * @return string|null 错误信息，null 表示消费成功
+     */
+    protected function consumeInviteCode(string $code, int $userId): ?string
+    {
+        $invite = InviteCode::where('code', strtoupper(trim($code)))->first();
+
+        if (!$invite) {
+            return '邀请码不存在';
+        }
+
+        if ((int) $invite->status !== InviteCode::STATUS_UNUSED) {
+            return '邀请码已被使用或已禁用';
+        }
+
+        // 条件更新保证并发下仅消费一次
+        $affected = InviteCode::where('id', $invite->id)
+            ->where('status', InviteCode::STATUS_UNUSED)
+            ->update([
+                'status'    => InviteCode::STATUS_USED,
+                'used_by'   => $userId,
+                'used_at'   => now(),
+                'update_time' => now(),
+            ]);
+
+        return $affected ? null : '邀请码已被使用';
     }
 
     /**

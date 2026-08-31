@@ -30,6 +30,7 @@ class AuthController extends Controller
             'phone_login_enabled' => $this->settingService->isPhoneLoginEnabled() ? '1' : '0',
             'allow_register'  => $this->settingService->get('allow_register', '1'),
             'wechat_configured' => $this->settingService->isWechatConfigured() ? '1' : '0',
+            'invite_enabled'  => $this->settingService->get('invite_enabled', '0'),
         ];
 
         return view('cmspro.sso::Home.auth.login', [
@@ -57,7 +58,33 @@ class AuthController extends Controller
             'login_title' => $this->settingService->get('login_title', '统一登录'),
             'redirect'    => (string) $request->input('redirect', ''),
             'mailConfigured' => mail_configured(),
+            'invite'      => $this->inviteViewData(),
         ]);
+    }
+
+    /**
+     * 注册页邀请码展示配置
+     */
+    protected function inviteViewData(): array
+    {
+        $enabled = $this->settingService->get('invite_enabled', '0') === '1';
+        if (!$enabled) {
+            return ['enabled' => false];
+        }
+
+        $mode = $this->settingService->get('invite_grant_mode', 'online_buy');
+        $price = $this->settingService->get('invite_price', '');
+        $price = is_numeric($price) ? round((float) $price, 2) : 0.0;
+
+        return [
+            'enabled' => true,
+            'mode'    => $mode,
+            'price'   => $price,
+            // 在线购买入口是否可用（费用必须大于 0）
+            'buyable' => $mode === 'online_buy' && $price > 0,
+            'url'     => $this->settingService->get('invite_url', ''),
+            'text'    => $this->settingService->get('invite_text', ''),
+        ];
     }
 
     /**

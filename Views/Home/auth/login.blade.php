@@ -142,6 +142,12 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
     // 弹出手机验证码登录弹窗
     function openPhoneLoginModal(){
+        var inviteEnabled = {{ ($configs['invite_enabled'] ?? '0') === '1' ? 'true' : 'false' }};
+        var inviteField = inviteEnabled
+            ? '<div class="layui-form-item">'
+              + '<input type="text" name="invite_code" id="phone-login-invite" placeholder="邀请码（新手机号注册需填写）" maxlength="32" class="layui-input" autocomplete="off">'
+              + '</div>'
+            : '';
         var content = '<form class="layui-form" style="padding:20px 24px 0;">'
             + '<div class="layui-form-item">'
             + '<input type="text" name="phone" id="phone-login-phone" placeholder="请输入手机号" maxlength="11" class="layui-input" autocomplete="off">'
@@ -150,12 +156,13 @@ layui.use(['form', 'jquery', 'layer'], function(){
             + '<input type="text" name="code" id="phone-login-code" placeholder="请输入验证码" maxlength="6" class="layui-input" style="padding-right: 100px;" autocomplete="off">'
             + '<button type="button" class="layui-btn" id="phone-send-code" style="position:absolute; right:0; top:0; height:38px; line-height:38px; padding:0 12px;">获取验证码</button>'
             + '</div>'
+            + inviteField
             + '</form>';
 
         layer.open({
             type: 1,
             title: '手机验证码登录',
-            area: ['360px', '225px'],
+            area: ['360px', inviteEnabled ? '270px' : '225px'],
             content: content,
             btn: ['登录'],
             yes: function(btnIndex){
@@ -229,7 +236,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/phone/login',
             type: 'POST',
-            data: { phone: phone, code: code },
+            data: {
+                phone: phone,
+                code: code,
+                invite_code: $.trim($('#phone-login-invite').val() || '')
+            },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {

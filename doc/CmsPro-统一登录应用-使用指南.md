@@ -32,10 +32,12 @@
 | 检查项 | 预期结果 |
 |--------|---------|
 | `apps` 表 | 存在 `cmspro.sso` 记录，status=1（启用） |
-| `admin_menus` 表 | 存在「统一登录」菜单（含登录设置子菜单） |
+| `admin_menus` 表 | 存在「统一登录」菜单（含邀请码管理、登录设置子菜单） |
 | `admin_permissions` 表 | 存在 `cmspro.sso.manage`、`cmspro.sso.setting` 权限 |
-| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（26 项） |
+| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（33 项） |
 | `app_cmspro_sso_login_logs` 表 | 已创建 |
+| `app_cmspro_sso_invite_codes` 表 | 已创建 |
+| `app_cmspro_sso_invite_orders` 表 | 已创建 |
 
 ## 三、功能验证
 

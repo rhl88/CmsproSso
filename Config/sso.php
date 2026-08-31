@@ -21,6 +21,14 @@ return [
     // 覆盖系统登录
     'override_system' => '0',
 
+    // 邀请注册配置
+    'invite_enabled' => '0',
+    // 邀请码发放方式（online_buy/url/text）
+    'invite_grant_mode' => 'online_buy',
+    'invite_price' => '',
+    'invite_url' => '',
+    'invite_text' => '',
+
     // 手机验证码登录
     'phone_login_enabled' => '0',
 

@@ -31,6 +31,7 @@ class ServiceProvider extends BaseServiceProvider
         $this->registerHomeMenuComposer();
         $this->registerHooks();
         $this->registerMiddleware();
+        $this->registerEventListeners();
     }
 
     protected function registerRoutes(): void
@@ -145,6 +146,17 @@ class ServiceProvider extends BaseServiceProvider
         $this->app['router']->pushMiddlewareToGroup(
             'web',
             \App\Apps\CmsproSso\Middleware\OverrideSystemAuthMiddleware::class
+        );
+    }
+
+    /**
+     * 注册事件监听器：Onlinepay 支付成功后发放邀请码
+     */
+    protected function registerEventListeners(): void
+    {
+        \Illuminate\Support\Facades\Event::listen(
+            \App\Apps\Onlinepay\Events\OrderPaid::class,
+            \App\Apps\CmsproSso\Listeners\HandleInviteOrderPaid::class
         );
     }
 

@@ -17,6 +17,8 @@ Route::get('/', function () {
 Route::get('/login', [AuthController::class, 'loginForm']);
 Route::get('/register', [AuthController::class, 'registerForm']);
 Route::get('/forgot-password', [AuthController::class, 'forgotPasswordForm']);
+// 邀请码购买页（游客可访问，仅在线购买模式开启时可用）
+Route::get('/invite/buy', [InviteController::class, 'buyForm']);
 
 // 微信授权回调（公开访问，微信服务器回调）
 Route::get('/auth/wechat/callback', [AuthController::class, 'wechatCallback']);

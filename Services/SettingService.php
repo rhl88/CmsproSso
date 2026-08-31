@@ -25,6 +25,7 @@ class SettingService
         'wechat_oauth_enabled', 'wechat_oauth_url',
         'login_title', 'allow_register', 'default_redirect',
         'override_system',
+        'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
         'phone_login_enabled', 'sms_provider',
         'sms_aliyun_access_key_id', 'sms_aliyun_access_key_secret',
         'sms_aliyun_sign_name', 'sms_aliyun_template_code',

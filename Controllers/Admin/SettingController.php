@@ -97,6 +97,28 @@ class SettingController extends Controller
             }
         }
 
+        // 邀请码发放方式校验
+        $grantMode = (string) ($data['invite_grant_mode'] ?? '');
+        if ($grantMode !== '' && !in_array($grantMode, ['online_buy', 'url', 'text'], true)) {
+            return response()->json(['code' => 400, 'message' => '邀请码发放方式不合法'], 400);
+        }
+
+        // 邀请注册启用时按发放方式校验对应表单
+        if (($data['invite_enabled'] ?? '0') === '1') {
+            if ($grantMode === 'online_buy' && !is_numeric($data['invite_price'] ?? null)) {
+                return response()->json(['code' => 400, 'message' => '在线购买模式必须填写邀请码费用（数字）'], 400);
+            }
+            if ($grantMode === 'url') {
+                $inviteUrl = trim((string) ($data['invite_url'] ?? ''));
+                if ($inviteUrl === '' || filter_var($inviteUrl, FILTER_VALIDATE_URL) === false) {
+                    return response()->json(['code' => 400, 'message' => '指定URL模式必须填写有效的获取链接'], 400);
+                }
+            }
+            if ($grantMode === 'text' && trim((string) ($data['invite_text'] ?? '')) === '') {
+                return response()->json(['code' => 400, 'message' => '文字提示模式必须填写提示内容'], 400);
+            }
+        }
+
         // 解析配置项所属的 group_id（按 manifest 声明匹配）
         $groupMap = $this->resolveConfigGroupMap();
 

@@ -24,6 +24,7 @@
                 <div class="layui-tab layui-tab-brief" lay-filter="settings-tab">
                 <ul class="layui-tab-title">
                     <li class="layui-this"><i class="fa fa-globe"></i> 访问设置</li>
+                    <li><i class="fa fa-user-plus"></i> 邀请注册</li>
                     <li><i class="fa fa-weixin"></i> 微信设置</li>
                     <li><i class="fa fa-mobile"></i> 手机登录</li>
                 </ul>
@@ -31,6 +32,14 @@
 
                         {{-- 访问设置 Tab --}}
                         <div class="layui-tab-item layui-show">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">登录页标题</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="login_title" value="{{ $configs['login_title'] ?? '统一登录' }}"
+                                           class="layui-input" style="width: 200px;">
+                                    <div class="layui-form-mid layui-word-aux">前台登录页展示的标题</div>
+                                </div>
+                            </div>
                             <div class="layui-form-item">
                                 <label class="layui-form-label">访问模式</label>
                                 <div class="layui-input-block">
@@ -59,14 +68,6 @@
                                 </div>
                             </div>
 
-
-                            <div class="layui-form-item">
-                                <label class="layui-form-label">登录页标题</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="login_title" value="{{ $configs['login_title'] ?? '统一登录' }}"
-                                           class="layui-input" style="width: 200px;">
-                                </div>
-                            </div>
                             <div class="layui-form-item">
                                 <label class="layui-form-label">覆盖系统</label>
                                 <div class="layui-input-block">
@@ -89,6 +90,53 @@
                                     <input type="text" name="default_redirect" value="{{ $configs['default_redirect'] ?? '/' }}"
                                            placeholder="/" class="layui-input" style="width: 200px;">
                                     <div class="layui-form-mid layui-word-aux">登录成功后未指定 redirect 参数时的默认跳转地址</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 邀请注册 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">邀请注册开关</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="invite_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="invite_enabled"
+                                           {{ ($configs['invite_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台注册需使用邀请码</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">邀请码发放方式</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                    <select name="invite_grant_mode" id="invite_grant_mode" lay-filter="invite_grant_mode">
+                                        <option value="online_buy" {{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'online_buy' ? 'selected' : '' }}>在线购买</option>
+                                        <option value="url" {{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'url' ? 'selected' : '' }}>指定URL</option>
+                                        <option value="text" {{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'text' ? 'selected' : '' }}>文字提示</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">选择邀请码的发放渠道，切换后仅显示对应设置</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="invite-price-item" style="{{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'online_buy' ? '' : 'display:none;' }}">
+                                <label class="layui-form-label">邀请码费用</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="invite_price" value="{{ $configs['invite_price'] ?? '' }}"
+                                           placeholder="9.90" class="layui-input" style="width: 200px;">
+                                    <div class="layui-form-mid layui-word-aux">在线购买模式下单个邀请码的售价（元）</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="invite-url-item" style="{{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'url' ? '' : 'display:none;' }}">
+                                <label class="layui-form-label">获取链接</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="invite_url" value="{{ $configs['invite_url'] ?? '' }}"
+                                           placeholder="https://example.com/buy-invite" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">指定URL模式下，前台展示该链接引导用户前往获取邀请码</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="invite-text-item" style="{{ ($configs['invite_grant_mode'] ?? 'online_buy') === 'text' ? '' : 'display:none;' }}">
+                                <label class="layui-form-label">文字提示</label>
+                                <div class="layui-input-block">
+                                    <textarea name="invite_text" class="layui-textarea" placeholder="如：请联系管理员获取邀请码">{{ $configs['invite_text'] ?? '' }}</textarea>
+                                    <div class="layui-form-mid layui-word-aux">文字提示模式下，前台注册页展示该提示内容</div>
                                 </div>
                             </div>
                         </div>
@@ -309,6 +357,19 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
 
     toggleAccessFields($('#access_mode').val());
 
+    // 邀请码发放方式联动：仅显示对应设置
+    function toggleInviteFields(mode) {
+        $('#invite-price-item').toggle(mode === 'online_buy');
+        $('#invite-url-item').toggle(mode === 'url');
+        $('#invite-text-item').toggle(mode === 'text');
+    }
+
+    form.on('select(invite_grant_mode)', function(data) {
+        toggleInviteFields(data.value);
+    });
+
+    toggleInviteFields($('#invite_grant_mode').val());
+
     // 网页授权外挂开关：动态显示/隐藏外挂地址表单
     form.on('switch(wechat_oauth_enabled)', function(data) {
         $('#wechat_oauth_url_row').toggle(data.elem.checked);
@@ -327,14 +388,14 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     toggleSmsProviderFields($('#sms_provider').val());
 
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
-    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system', 'phone_login_enabled'];
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'invite_enabled'];
 
     $('#save-settings').on('click', function() {
         var formData = {};
 
         // 收集 input/textarea/select
         $('.layui-form input[type="text"], .layui-form input[type="password"], '
-          + '.layui-form select').each(function() {
+          + '.layui-form select, .layui-form textarea').each(function() {
             var name = $(this).attr('name');
             if (name) formData[name] = $(this).val();
         });

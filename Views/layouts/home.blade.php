@@ -206,22 +206,22 @@
     <nav class="sso-nav">
         @if(!empty($homeMenus))
             @foreach($homeMenus as $menu)
-                @if(!empty($menu['children']))
+                @if(!empty($menu->children))
                     <div class="sso-nav-item has-children">
-                        <a class="sso-nav-link" href="{{ menu_path($menu['path'] ?? '') }}">
-                            @if(!empty($menu['icon']))<i class="layui-icon {{ $menu['icon'] }}"></i>@endif
-                            <span>{{ $menu['name'] }}</span>
+                        <a class="sso-nav-link" href="{{ menu_path($menu->path, $menu) }}">
+                            @if(!empty($menu->icon))<i class="layui-icon {{ $menu->icon }}"></i>@endif
+                            <span>{{ $menu->name }}</span>
                         </a>
                         <div class="sso-nav-dropdown">
-                            @foreach($menu['children'] as $child)
-                                <a class="sso-nav-link" href="{{ menu_path($child['path'] ?? '') }}">{{ $child['name'] }}</a>
+                            @foreach($menu->children as $child)
+                                <a class="sso-nav-link" href="{{ menu_path($child->path, $child) }}">{{ $child->name }}</a>
                             @endforeach
                         </div>
                     </div>
                 @else
-                    <a class="sso-nav-item sso-nav-link" href="{{ menu_path($menu['path'] ?? '') }}">
-                        @if(!empty($menu['icon']))<i class="layui-icon {{ $menu['icon'] }}"></i>@endif
-                        <span>{{ $menu['name'] }}</span>
+                    <a class="sso-nav-item sso-nav-link" href="{{ menu_path($menu->path, $menu) }}">
+                        @if(!empty($menu->icon))<i class="layui-icon {{ $menu->icon }}"></i>@endif
+                        <span>{{ $menu->name }}</span>
                     </a>
                 @endif
             @endforeach

@@ -2,8 +2,8 @@
 
 namespace App\Apps\CmsproSso;
 
+use App\Models\AdminMenu;
 use App\Models\ConfigItem;
-use App\Services\MenuService;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider as BaseServiceProvider;
@@ -109,15 +109,51 @@ class ServiceProvider extends BaseServiceProvider
     /**
      * 向前台布局注入系统前台导航菜单
      *
-     * 复用系统 MenuService::homeMenus()（terminal_type='home' 的菜单树），
+     * 查询 terminal_type='home' 的菜单并构建树形结构，
      * 供 layouts/home.blade.php 头部左侧渲染导航使用。
      */
     protected function registerHomeMenuComposer(): void
     {
+        // 参照官网应用（Cmsprohome）方式：直接查询含 app_id 的菜单模型对象，
+        // 使 menu_path() 能识别域名绑定应用，将子域名菜单渲染为其绑定域名 URL
         View::composer('cmspro.sso::layouts.home', function ($view) {
-            $result = app(MenuService::class)->homeMenus();
-            $view->with('homeMenus', $result['data'] ?? []);
+            try {
+                $menus = AdminMenu::where('status', 1)
+                    ->where('visible', 1)
+                    ->where('terminal_type', 'home')
+                    ->orderBy('sort', 'asc')
+                    ->get(['id', 'parent_id', 'name', 'path', 'icon', 'sort', 'visible', 'app_id', 'terminal_type']);
+
+                $view->with('homeMenus', $this->buildHomeMenuTree($menus));
+            } catch (\Throwable) {
+                $view->with('homeMenus', collect());
+            }
         });
+    }
+
+    /**
+     * 构建前台导航菜单树
+     *
+     * 节点为 AdminMenu 模型对象，子菜单挂载在 children 动态属性上。
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection<int, AdminMenu>  $menus
+     * @return array<int, AdminMenu>
+     */
+    protected function buildHomeMenuTree($menus): array
+    {
+        $grouped = collect($menus)->groupBy('parent_id');
+
+        $build = function (int $parentId) use (&$build, $grouped): array {
+            return $grouped->get($parentId, collect())
+                ->map(function (AdminMenu $menu) use (&$build) {
+                    $menu->children = $build((int) $menu->id);
+
+                    return $menu;
+                })
+                ->all();
+        };
+
+        return $build(0);
     }
 
     protected function registerHooks(): void

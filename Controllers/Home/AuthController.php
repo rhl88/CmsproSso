@@ -121,6 +121,18 @@ class AuthController extends Controller
     }
 
     /**
+     * 微信新用户邀请码填写页（邀请注册开启时，微信内授权回调发现新用户后跳转）
+     */
+    public function completeInviteForm(Request $request)
+    {
+        $token = (string) $request->input('token', '');
+
+        return view('cmspro.sso::Home.auth.complete-invite', [
+            'token' => $token,
+        ]);
+    }
+
+    /**
      * 首次微信登录完善资料页
      */
     public function completeForm(Request $request)

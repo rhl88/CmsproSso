@@ -20,6 +20,8 @@ Route::get('/register', [AuthController::class, 'registerForm']);
 Route::get('/forgot-password', [AuthController::class, 'forgotPasswordForm']);
 // 邀请码购买页（游客可访问，仅在线购买模式开启时可用）
 Route::get('/invite/buy', [InviteController::class, 'buyForm']);
+// 微信新用户邀请码填写页（邀请注册开启时，微信内授权回调发现新用户后跳转）
+Route::get('/auth/wechat/complete-invite', [AuthController::class, 'completeInviteForm']);
 
 // 微信授权回调（公开访问，微信服务器回调）
 Route::get('/auth/wechat/callback', [AuthController::class, 'wechatCallback']);

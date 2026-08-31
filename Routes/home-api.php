@@ -17,6 +17,8 @@ Route::post('/auth/logout', [AuthController::class, 'logout']);
 Route::get('/auth/wechat/login-url', [AuthController::class, 'wechatLoginUrl']);
 Route::get('/auth/wechat/login-status', [AuthController::class, 'wechatLoginStatus']);
 Route::post('/auth/wechat/complete', [AuthController::class, 'completeProfile']);
+// 邀请注册开启时，微信新用户凭 token 提交邀请码完成注册（PC 弹窗 / 微信端 complete-invite 页共用）
+Route::post('/auth/wechat/invite', [AuthController::class, 'submitInvite']);
 
 // 手机验证码登录 API
 Route::post('/auth/phone/code', [AuthController::class, 'sendPhoneCode']);

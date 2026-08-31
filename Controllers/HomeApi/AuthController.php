@@ -29,12 +29,12 @@ class AuthController extends Controller
 
     // Session 键：微信授权 state（CSRF 防护）
     protected const SESSION_OAUTH_STATE = 'cmspro_sso_wechat_oauth_state';
-    // Session 键：微信登录携带的邀请码（邀请注册模式下新微信用户建号时消费）
-    protected const SESSION_OAUTH_INVITE = 'cmspro_sso_wechat_invite_code';
 
     // Cache 键前缀：PC 扫码登录 state + 登录结果（跨设备扫码场景）
     protected const CACHE_LOGIN_STATE_PREFIX = 'cmspro_sso_login_state:';
     protected const CACHE_LOGIN_RESULT_PREFIX = 'cmspro_sso_login_result:';
+    // Cache 键前缀：待建号新用户的微信授权数据（邀请码收集期间暂存，凭 token 一次性取回）
+    protected const CACHE_OAUTH_DATA_PREFIX = 'cmspro_sso_oauth_data:';
     protected const LOGIN_STATE_TTL = 600;  // 10 分钟过期
 
     // Cache 键前缀：手机验证码
@@ -276,9 +276,13 @@ class AuthController extends Controller
         $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
 
         if ($isNew) {
-            // 邀请注册开启时，新手机号自动建号也需邀请码
+            // 邀请注册开启时，新手机号自动建号也需邀请码（need_invite 供前端动态显示邀请码输入框）
             if ($inviteRequired && empty($validated['invite_code'])) {
-                return response()->json(['code' => 422, 'message' => '注册新账号需要邀请码'], 422);
+                return response()->json([
+                    'code'    => 422,
+                    'message' => '注册新账号需要邀请码',
+                    'data'    => ['need_invite' => true],
+                ], 422);
             }
 
             try {
@@ -410,30 +414,15 @@ class AuthController extends Controller
         // state 防 CSRF：随机串
         $state = md5(uniqid((string) mt_rand(), true));
 
-        // 邀请注册模式：微信登录需携带邀请码（新微信用户建号时消费；已绑定老用户不消费）
-        $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
-        $inviteCode = strtoupper(trim((string) $request->input('invite_code', '')));
-        if ($inviteRequired) {
-            if ($inviteCode === '') {
-                return response()->json(['code' => 422, 'message' => '本站开启邀请注册，请先填写邀请码'], 422);
-            }
-            $error = $this->checkInviteCodeUsable($inviteCode);
-            if ($error !== null) {
-                return response()->json(['code' => 422, 'message' => $error], 422);
-            }
-        }
+        // 说明：邀请注册模式下不在授权前收集邀请码——先完成授权确认账号是否已存在，
+        // 已绑定老用户直接登录，仅新用户在回调后（PC 弹窗/微信端页面）提示填写邀请码。
 
         if ($device === 'pc') {
             // PC 扫码模式：state 存 Cache（跨设备，回调时 PC 端 session 不可用）
-            Cache::put(self::CACHE_LOGIN_STATE_PREFIX . $state, [
-                'invite_code' => $inviteRequired ? $inviteCode : '',
-            ], self::LOGIN_STATE_TTL);
+            Cache::put(self::CACHE_LOGIN_STATE_PREFIX . $state, true, self::LOGIN_STATE_TTL);
         } else {
             // 普通模式（微信内）：state 存 session
             $request->session()->put(self::SESSION_OAUTH_STATE, $state);
-            if ($inviteRequired) {
-                $request->session()->put(self::SESSION_OAUTH_INVITE, $inviteCode);
-            }
         }
 
         // 外挂模式：构建跳转到外挂脚本的 URL
@@ -488,15 +477,13 @@ class AuthController extends Controller
         // 校验 state：先查 Cache（PC 扫码模式），再查 session（普通模式）
         $isPcMode = $state !== '' && Cache::has(self::CACHE_LOGIN_STATE_PREFIX . $state);
         if ($isPcMode) {
-            $stateData = Cache::pull(self::CACHE_LOGIN_STATE_PREFIX . $state);
-            $inviteCode = is_array($stateData) ? strtoupper(trim((string) ($stateData['invite_code'] ?? ''))) : '';
+            Cache::pull(self::CACHE_LOGIN_STATE_PREFIX . $state);
         } else {
             $expectedState = (string) $request->session()->get(self::SESSION_OAUTH_STATE, '');
             if ($expectedState === '' || $state === '' || !hash_equals($expectedState, $state)) {
                 abort(400, '授权状态校验失败，请重新登录');
             }
             $request->session()->forget(self::SESSION_OAUTH_STATE);
-            $inviteCode = strtoupper(trim((string) $request->session()->pull(self::SESSION_OAUTH_INVITE, '')));
         }
 
         // 外挂模式错误回传（外挂处理失败时可能带 error 参数）
@@ -517,12 +504,29 @@ class AuthController extends Controller
             abort(400, '微信授权失败，未获取到 openid');
         }
 
+        // 邀请注册模式下：先检查账号是否已存在——老用户直接登录，仅新用户需要邀请码
+        $existingUser = $this->findWechatUser((string) $data['openid']);
+        $needInvite = $existingUser === null
+            && $this->settingService->get('invite_enabled', '0') === '1';
+
         // PC 扫码模式：解析/创建用户，将结果存 Cache，redirect 到提示页
         if ($isPcMode) {
+            if ($needInvite) {
+                // 新微信用户且开启邀请注册：授权数据暂存 Cache，PC 端轮询到 need_invite 后弹窗收集邀请码
+                $token = bin2hex(random_bytes(16));
+                Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+                Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
+                    'need_invite'  => true,
+                    'invite_token' => $token,
+                ], self::LOGIN_STATE_TTL);
+
+                return redirect(ShareService::frontUrl('/auth/wechat/pc-success?result=invite'));
+            }
+
             try {
-                [$user, $isNew] = $this->resolveOrCreateUser($data, $inviteCode);
+                [$user, $isNew] = $this->resolveOrCreateUser($data);
             } catch (\RuntimeException $e) {
-                // 邀请码消费失败等建号错误：结果存 Cache 供 PC 端轮询展示，微信端提示页显示失败态
+                // 建号错误：结果存 Cache 供 PC 端轮询展示，微信端提示页显示失败态
                 Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
                     'error' => $e->getMessage(),
                 ], self::LOGIN_STATE_TTL);
@@ -538,9 +542,17 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/auth/wechat/pc-success'));
         }
 
-        // 普通模式：login 并 redirect
+        // 普通模式（微信内）：新用户且开启邀请注册时，redirect 到微信端邀请码填写页
+        if ($needInvite) {
+            $token = bin2hex(random_bytes(16));
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+
+            return redirect(ShareService::frontUrl('/auth/wechat/complete-invite?token=' . $token));
+        }
+
+        // 老用户或未开启邀请注册：login 并 redirect
         try {
-            return $this->loginOrCreateUser($request, $data, $inviteCode);
+            return $this->loginOrCreateUser($request, $data);
         } catch (\RuntimeException $e) {
             abort(400, $e->getMessage() . '，请返回登录页重试');
         }
@@ -565,6 +577,20 @@ class AuthController extends Controller
                 'code'    => 0,
                 'message' => 'ok',
                 'data'    => ['logged_in' => false],
+            ]);
+        }
+
+        // 新微信用户且开启邀请注册：返回 need_invite，PC 端弹窗收集邀请码后凭 token 提交。
+        // 不清理结果 Cache，PC 端提交邀请码成功后直接跳转，过期前轮询可重复获得该状态。
+        if (!empty($result['need_invite'])) {
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => [
+                    'logged_in'    => false,
+                    'need_invite'  => true,
+                    'invite_token' => (string) ($result['invite_token'] ?? ''),
+                ],
             ]);
         }
 
@@ -691,6 +717,73 @@ class AuthController extends Controller
     }
 
     /**
+     * 根据微信 openid 查找已绑定的用户（不存在返回 null）
+     */
+    protected function findWechatUser(string $openid): ?User
+    {
+        $binding = UserThirdParty::where('platform', 'wechat')
+            ->where('open_id', $openid)
+            ->first();
+
+        if ($binding && $binding->user_id) {
+            $user = User::find($binding->user_id);
+            if ($user) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 提交邀请码完成微信新用户注册
+     *
+     * 适用于两种场景（邀请注册开启 + 授权确认是新用户后）：
+     *   1. PC 扫码：PC 端轮询到 need_invite 后弹窗收集邀请码提交；
+     *   2. 微信内授权：回调 redirect 到 complete-invite 页面填写提交。
+     * 建号成功即建立登录态。
+     */
+    public function submitInvite(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token'       => 'required|string|size:32',
+            'invite_code' => 'required|string|max:32',
+        ], [
+            'invite_code.required' => '请输入邀请码',
+        ]);
+
+        $data = Cache::pull(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+        if (!$data || !is_array($data)) {
+            return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新扫码登录'], 400);
+        }
+
+        try {
+            [$user, $isNew] = $this->resolveOrCreateUser($data, $validated['invite_code']);
+        } catch (\RuntimeException $e) {
+            // 邀请码无效等：授权数据放回，允许用户重新填写
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $validated['token'], $data, self::LOGIN_STATE_TTL);
+
+            return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
+        }
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+        $user->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($user->id, 'wechat', $request, 1, '微信登录成功（邀请码注册）');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '登录成功',
+            'data'    => [
+                'redirect' => $isNew
+                    ? ShareService::frontUrl('/auth/wechat/complete')
+                    : $this->resolveRedirect($request),
+            ],
+        ]);
+    }
+
+    /**
      * 解析或创建用户（不建立登录态，由调用方决定如何 login）
      *
      * 邀请注册开启时，新微信用户建号需在事务内校验并消费邀请码；
@@ -706,16 +799,10 @@ class AuthController extends Controller
         $openid = $data['openid'];
         $unionid = $data['unionid'] ?? null;
 
-        // 查找已绑定用户
-        $binding = UserThirdParty::where('platform', 'wechat')
-            ->where('open_id', $openid)
-            ->first();
-
-        if ($binding && $binding->user_id) {
-            $user = User::find($binding->user_id);
-            if ($user) {
-                return [$user, false];
-            }
+        // 已绑定用户直接返回（调用方保证：邀请注册开启且为新用户时不会走到这里）
+        $existing = $this->findWechatUser($openid);
+        if ($existing) {
+            return [$existing, false];
         }
 
         // 首次微信登录：创建用户并绑定

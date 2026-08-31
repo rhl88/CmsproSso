@@ -107,27 +107,14 @@ layui.use(['form', 'jquery', 'layer'], function(){
         return false;
     });
 
-    // 微信登录
+    // 微信登录：先授权确认账号是否存在，仅新用户（need_invite）才提示填写邀请码
     $('#wechat-login-btn').on('click', function(){
         var isWechat = /MicroMessenger/i.test(navigator.userAgent);
         var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        // 邀请注册开启时：先收集邀请码再发起微信授权
-        if (inviteEnabled) {
-            openInviteModal(function(inviteCode){
-                proceedWechatLogin(inviteCode, isWechat, isMobile);
-            });
-            return;
-        }
-
-        proceedWechatLogin('', isWechat, isMobile);
-    });
-
-    // 邀请注册模式下，收集邀请码后继续微信登录流程
-    function proceedWechatLogin(inviteCode, isWechat, isMobile){
         // 微信内：直接跳转授权
         if (isWechat) {
-            wechatLogin('', inviteCode, function(url){
+            wechatLogin('', function(url){
                 window.location.href = url;
             });
             return;
@@ -135,7 +122,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
         // PC 端：弹出二维码扫码
         if (!isMobile) {
-            wechatLogin('pc', inviteCode, function(url, state){
+            wechatLogin('pc', function(url, state){
                 openQrModal(url, state);
             });
             return;
@@ -148,19 +135,19 @@ layui.use(['form', 'jquery', 'layer'], function(){
             content: '请在微信中打开本页面进行登录',
             btn: ['知道了']
         });
-    }
+    });
 
-    // 邀请码输入弹窗（微信登录用）
-    function openInviteModal(callback){
+    // 邀请码输入弹窗（PC 扫码轮询到 need_invite 时弹出，凭 token 提交完成注册）
+    function openWechatInviteModal(inviteToken){
         layer.open({
             type: 1,
-            title: '微信登录',
-            area: ['360px', '190px'],
+            title: '填写邀请码',
+            area: ['360px', '200px'],
             content: '<div style="padding: 20px 24px 0;">'
-                + '<p style="color: #666; font-size: 13px; margin-bottom: 10px;">本站开启邀请注册，请输入邀请码后继续微信登录</p>'
+                + '<p style="color: #666; font-size: 13px; margin-bottom: 10px;">本站开启邀请注册，请输入邀请码完成登录</p>'
                 + '<input type="text" id="wechat-invite-input" placeholder="请输入邀请码" maxlength="32" class="layui-input" autocomplete="off">'
                 + '</div>',
-            btn: ['继续登录'],
+            btn: ['完成登录'],
             success: function(){
                 $('#wechat-invite-input').focus();
             },
@@ -170,8 +157,33 @@ layui.use(['form', 'jquery', 'layer'], function(){
                     layer.msg('请输入邀请码', {icon: 2});
                     return;
                 }
-                layer.close(idx);
-                callback(code.toUpperCase());
+
+                var loadIdx = layer.load(2);
+                $.ajax({
+                    url: window.SSO_API_BASE + '/auth/wechat/invite',
+                    type: 'POST',
+                    data: { token: inviteToken, invite_code: code.toUpperCase() },
+                    success: function(res){
+                        layer.close(loadIdx);
+                        if (res.code === 0) {
+                            layer.close(idx);
+                            layer.msg('登录成功', {icon: 1, time: 1000}, function(){
+                                window.location.href = res.data.redirect || '/';
+                            });
+                        } else {
+                            layer.msg(res.message || '提交失败', {icon: 2});
+                        }
+                    },
+                    error: function(xhr){
+                        layer.close(loadIdx);
+                        var msg = '请求失败';
+                        try {
+                            var res = JSON.parse(xhr.responseText);
+                            if (res.message) msg = res.message;
+                        } catch(e) {}
+                        layer.msg(msg, {icon: 2});
+                    }
+                });
             }
         });
     }
@@ -183,11 +195,6 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
     // 弹出手机验证码登录弹窗
     function openPhoneLoginModal(){
-        var inviteField = inviteEnabled
-            ? '<div class="layui-form-item">'
-              + '<input type="text" name="invite_code" id="phone-login-invite" placeholder="邀请码（新手机号注册需填写）" maxlength="32" class="layui-input" autocomplete="off">'
-              + '</div>'
-            : '';
         var content = '<form class="layui-form" style="padding:20px 24px 0;">'
             + '<div class="layui-form-item">'
             + '<input type="text" name="phone" id="phone-login-phone" placeholder="请输入手机号" maxlength="11" class="layui-input" autocomplete="off">'
@@ -196,13 +203,17 @@ layui.use(['form', 'jquery', 'layer'], function(){
             + '<input type="text" name="code" id="phone-login-code" placeholder="请输入验证码" maxlength="6" class="layui-input" style="padding-right: 100px;" autocomplete="off">'
             + '<button type="button" class="layui-btn" id="phone-send-code" style="position:absolute; right:0; top:0; height:38px; line-height:38px; padding:0 12px;">获取验证码</button>'
             + '</div>'
-            + inviteField
+            // 邀请码字段默认隐藏：仅新手机号注册（服务端返回 need_invite）时显示
+            + '<div class="layui-form-item" id="phone-invite-item" style="display: none; margin-bottom: 5px;">'
+            + '<input type="text" name="invite_code" id="phone-login-invite" placeholder="请输入邀请码" maxlength="32" class="layui-input" autocomplete="off">'
+            + '</div>'
+            + '<div id="phone-invite-tip" style="display: none; color: #ff5722; font-size: 12px; margin-bottom: 5px;">该手机号未注册，注册新账号需要邀请码</div>'
             + '</form>';
 
         layer.open({
             type: 1,
             title: '手机验证码登录',
-            area: ['360px', inviteEnabled ? '270px' : '225px'],
+            area: ['360px', '225px'],
             content: content,
             btn: ['登录'],
             yes: function(btnIndex){
@@ -295,22 +306,29 @@ layui.use(['form', 'jquery', 'layer'], function(){
             error: function(xhr){
                 layer.close(loadIdx);
                 var msg = '请求失败';
+                var needInvite = false;
                 try {
                     var res = JSON.parse(xhr.responseText);
                     if (res.message) msg = res.message;
+                    needInvite = !!(res.data && res.data.need_invite);
                 } catch(e) {}
                 layer.msg(msg, {icon: 2});
+                // 新手机号且开启邀请注册：显示邀请码输入框，引导用户补填后重新提交
+                if (needInvite) {
+                    $('#phone-invite-item, #phone-invite-tip').show();
+                    $('#phone-login-invite').focus();
+                }
             }
         });
     }
 
     // 获取微信授权 URL
-    function wechatLogin(device, inviteCode, callback){
+    function wechatLogin(device, callback){
         var loadIdx = layer.load(2);
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/login-url',
             type: 'GET',
-            data: { device: device, invite_code: inviteCode || '' },
+            data: { device: device },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -361,10 +379,17 @@ layui.use(['form', 'jquery', 'layer'], function(){
                         layer.msg('登录成功', {icon: 1, time: 1000}, function(){
                             window.location.href = res.data.redirect || '/';
                         });
+                        return;
+                    }
+                    // 扫码确认后发现是新用户且开启邀请注册：停止轮询，弹窗收集邀请码
+                    if (res.code === 0 && res.data.need_invite) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        openWechatInviteModal(res.data.invite_token);
                     }
                 },
                 error: function(xhr){
-                    // 扫码确认后建号失败（如邀请码已被使用）：停止轮询并提示
+                    // 扫码确认后建号失败：停止轮询并提示
                     if (xhr.status === 422) {
                         clearInterval(pollTimer);
                         layer.close(idx);

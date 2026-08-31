@@ -115,11 +115,11 @@
 | 39 | 前台路由占用 | `home_routes` 声明 `/sso/*` 路由避免冲突 | `manifest.json` |
 | 40 | 邀请注册设置 | 后台「邀请注册」tab：邀请注册开关 + 发放方式（在线购买/指定URL/文字提示）联动表单，按方式校验 | `Views/Admin/settings/index.blade.php` / `SettingController` |
 | 41 | 邀请码管理 | 后台列表（关键词/状态筛选、分页）、批量生成（1-500 个、可选费用快照）、未使用码启停/删除，已使用码仅可复制用于追溯 | `Views/Admin/invite/index.blade.php` / `InviteCodeController` |
-| 42 | 邀请注册闭环 | 注册/手机验证码登录（新号）需邀请码，事务内原子消费（防并发重复使用），消费失败整体回滚 | `HomeApi/AuthController` |
+| 42 | 邀请注册闭环 | 注册/手机验证码登录需邀请码（先查账号：已存在直接登录，仅新手机号要求邀请码，服务端 `need_invite` 驱动前端动态显示输入框），事务内原子消费（防并发重复使用），消费失败整体回滚 | `HomeApi/AuthController` |
 | 43 | 邀请码购买 | 游客可访问购买页，经 Onlinepay 创建支付订单（SSOINV_ 前缀），`OrderPaid` 事件监听自动发放邀请码，前端轮询展示并复制 | `Views/Home/invite/buy.blade.php` / `Listeners/HandleInviteOrderPaid` |
 | 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
 | 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
-| 46 | 微信登录邀请码收集 | 邀请注册开启时，微信登录（微信内授权 + PC 扫码）登录前弹窗收集邀请码：获取授权 URL 预校验不消费；回调建号事务内消费，已绑定老用户不消费；PC 扫码失败经 `login-status` 返回 422，微信端 `pc-success?result=failed` 显示失败态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/pc-success.blade.php` |
+| 46 | 微信登录邀请码收集 | 邀请注册开启时，先授权确认账号存在性：已绑定老用户直接登录；仅新微信用户在授权后收集邀请码——微信内授权 redirect 到 `complete-invite` 页填写，PC 扫码经 `login-status` 返回 `need_invite` 弹窗收集，均凭一次性 token 提交 `/auth/wechat/invite` 建号并事务内消费邀请码；微信端 `pc-success?result=invite/failed` 显示对应状态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete-invite.blade.php` / `Views/Home/auth/pc-success.blade.php` |
 
 ## 十一、版本历史
 
@@ -134,3 +134,4 @@
 | 1.3.1 | 2026-08-31 | 新增邀请注册设置（开关 + 发放方式：在线购买/指定URL/文字提示联动表单）；菜单新增「邀请码管理」入口 |
 | 1.4.0 | 2026-08-31 | 新增邀请码管理：`app_cmspro_sso_invite_codes` 表、列表/批量生成/启停/删除后台页面与 API |
 | 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示；在线购买模式增加 Onlinepay 安装/启用依赖校验 |
+| 1.5.1 | 2026-08-31 | 邀请码收集时机调整：登录授权前不再收集邀请码，改为先确认账号存在性——手机/微信老用户直接登录，仅新用户（服务端 `need_invite`）在授权后补填邀请码；微信端新增 `complete-invite` 填写页，PC 扫码弹窗与手机登录弹窗均改为动态显示邀请码输入框 |

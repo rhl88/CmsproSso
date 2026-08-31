@@ -1047,14 +1047,51 @@ class AuthController extends Controller
             return true;
         }
 
-        // 绝对地址需校验 host 与当前站点一致
+        // 绝对地址需校验 host 与当前站点同主域（含兄弟子域，如 sso → bbs）
         $host = parse_url($url, PHP_URL_HOST);
-        if ($host === null) {
+        if ($host === null || $host === '') {
             return false;
         }
 
-        $currentHost = request()->getHost();
-        return $host === $currentHost || str_ends_with($host, '.' . $currentHost);
+        return $this->sameSiteHost($host, request()->getHost());
+    }
+
+    /**
+     * 判断两个 host 是否同主域（完全相同或共享注册主域）
+     */
+    protected function sameSiteHost(string $host1, string $host2): bool
+    {
+        $host1 = strtolower(trim($host1, '.'));
+        $host2 = strtolower(trim($host2, '.'));
+
+        if ($host1 === $host2) {
+            return true;
+        }
+
+        $domain = $this->registrableDomain($host1);
+
+        return $domain !== '' && $domain === $this->registrableDomain($host2);
+    }
+
+    /**
+     * 取 host 的注册主域（如 bbs.cmspro.cn → cmspro.cn）
+     *
+     * 对常见二级后缀（com.cn/net.cn 等）取三段，其余取两段；无点号 host 返回空串
+     */
+    protected function registrableDomain(string $host): string
+    {
+        $parts = explode('.', $host);
+        $count = count($parts);
+        if ($count < 2) {
+            return '';
+        }
+
+        $secondLevelSuffixes = ['com', 'net', 'org', 'gov', 'edu', 'ac', 'co'];
+        if ($count >= 3 && in_array($parts[$count - 2], $secondLevelSuffixes, true)) {
+            return implode('.', array_slice($parts, -3));
+        }
+
+        return implode('.', array_slice($parts, -2));
     }
 
     /**

@@ -169,14 +169,14 @@ layui.use(['table', 'form', 'layer', 'jquery'], function() {
         },
         maxHeight: ($(window).height() - 200) + 'px',
         cols: [[
-            { title: 'ID', field: 'id', align: 'center', width: 70, fixed: 'left', unresize: true },
-            { title: '邀请码', field: 'code', align: 'center', width: 180, templet: function(d) { return '<a href="javascript:;" class="copy-code" style="color:#1e9fff;cursor:pointer;" data-code="' + d.code + '" title="点击复制">' + d.code + '</a>'; } },
-            { title: '状态', field: 'status', align: 'center', width: 90, templet: '#statusTpl' },
-            { title: '费用', field: 'price', align: 'center', width: 100, templet: '#priceTpl' },
-            { title: '使用者ID', field: 'used_by', align: 'center', width: 100, templet: function(d) { return d.used_by || '<span style="color:#999;">-</span>'; } },
-            { title: '使用时间', field: 'used_at', align: 'center', width: 170, templet: '#usedAtTpl' },
-            { title: '创建时间', field: 'create_time', align: 'center', width: 170, sort: true },
-            { title: '操作', toolbar: '#invites-bar', align: 'center', width: 100, fixed: 'right' }
+            { title: 'ID', field: 'id', align: 'center', fixed: 'left', unresize: true },
+            { title: '邀请码', field: 'code', align: 'center', templet: function(d) { return '<a href="javascript:;" class="copy-code" style="color:#1e9fff;cursor:pointer;" data-code="' + d.code + '" title="点击复制">' + d.code + '</a>'; } },
+            { title: '状态', field: 'status', align: 'center', templet: '#statusTpl' },
+            { title: '费用', field: 'price', align: 'center', templet: '#priceTpl' },
+            { title: '使用者ID', field: 'used_by', align: 'center', templet: function(d) { return d.used_by || '<span style="color:#999;">-</span>'; } },
+            { title: '使用时间', field: 'used_at', align: 'center', templet: '#usedAtTpl' },
+            { title: '创建时间', field: 'create_time', align: 'center', sort: true },
+            { title: '操作', toolbar: '#invites-bar', align: 'center', fixed: 'right' }
         ]],
         skin: false,
         parseData: function(res) {

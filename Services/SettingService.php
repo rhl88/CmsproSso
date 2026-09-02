@@ -23,10 +23,12 @@ class SettingService
         'access_mode', 'access_domain', 'access_path',
         'wechat_enabled', 'wechat_mp_app_id', 'wechat_mp_app_secret',
         'wechat_oauth_enabled', 'wechat_oauth_url',
+        'qq_enabled', 'qq_mode', 'qq_app_id', 'qq_app_key',
         'login_title', 'allow_register', 'default_redirect',
         'override_system',
         'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
         'phone_login_enabled', 'sms_provider',
+        'email_login_enabled',
         'sms_aliyun_access_key_id', 'sms_aliyun_access_key_secret',
         'sms_aliyun_sign_name', 'sms_aliyun_template_code',
         'sms_tencent_secret_id', 'sms_tencent_secret_key',
@@ -59,6 +61,15 @@ class SettingService
     {
         return $this->get('wechat_mp_app_id') !== ''
             && $this->get('wechat_mp_app_secret') !== '';
+    }
+
+    /**
+     * 判断 QQ 登录是否已配置（App ID + App Key 均非空）
+     */
+    public function isQqConfigured(): bool
+    {
+        return $this->get('qq_app_id') !== ''
+            && $this->get('qq_app_key') !== '';
     }
 
     /**
@@ -100,6 +111,14 @@ class SettingService
     public function isPhoneLoginEnabled(): bool
     {
         return $this->get('phone_login_enabled', '0') === '1';
+    }
+
+    /**
+     * 判断是否启用邮箱验证码登录（需系统已配置 SMTP 才可用）
+     */
+    public function isEmailLoginEnabled(): bool
+    {
+        return $this->get('email_login_enabled', '0') === '1' && mail_configured();
     }
 
     /**

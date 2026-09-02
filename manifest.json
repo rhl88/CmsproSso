@@ -1,8 +1,8 @@
 {
     "id": "cmspro.sso",
     "name": "统一登录",
-    "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信等社交化登录（当前实现微信登录，预留 QQ 等扩展）。仅对当前系统使用，不对外开放。支持子域名绑定与目录访问。",
-    "version": "1.5.3",
+    "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信、QQ等社交化登录（当前实现微信登录与QQ互联登录）。仅对当前系统使用，不对外开放。支持子域名绑定与目录访问。",
+    "version": "1.5.4",
     "icon": "fa fa-sign-in",
     "author": "CmsPro",
     "require": {
@@ -48,7 +48,9 @@
         "/sso/forgot-password": "找回密码页",
         "/sso/invite/buy": "邀请码购买页",
         "/sso/auth/wechat/callback": "微信授权回调",
-        "/sso/auth/wechat/pc-success": "PC扫码登录成功页"
+        "/sso/auth/wechat/pc-success": "PC扫码登录成功页",
+        "/sso/auth/qq/callback": "QQ授权回调",
+        "/sso/auth/qq/pc-success": "QQ扫码登录成功页"
     },
     "config_groups": [
         {
@@ -130,6 +132,44 @@
             ]
         },
         {
+            "name": "qq_settings",
+            "title": "QQ登录设置",
+            "items": [
+                {
+                    "name": "qq_enabled",
+                    "title": "启用QQ登录",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "开启后前台登录页显示QQ登录入口"
+                },
+                {
+                    "name": "qq_mode",
+                    "title": "功能选项",
+                    "type": "select",
+                    "value": "web",
+                    "options": [
+                        {"label": "QQ扫码登录", "value": "qrcode"},
+                        {"label": "QQ网页登录", "value": "web"}
+                    ],
+                    "tips": "QQ扫码登录：PC 端展示二维码，需使用QQ手机版扫一扫登录；QQ网页登录（默认）：跳转 QQ互联 OAuth2.0 认证页授权登录"
+                },
+                {
+                    "name": "qq_app_id",
+                    "title": "QQ互联 AppID",
+                    "type": "text",
+                    "value": "",
+                    "tips": "QQ互联开放平台的应用 AppID，用于网页授权登录"
+                },
+                {
+                    "name": "qq_app_key",
+                    "title": "QQ互联 AppKey",
+                    "type": "password",
+                    "value": "",
+                    "tips": "QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid"
+                }
+            ]
+        },
+        {
             "name": "login_settings",
             "title": "登录设置",
             "items": [
@@ -206,6 +246,19 @@
                     "type": "textarea",
                     "value": "",
                     "tips": "文字提示模式下，前台注册页展示该提示内容"
+                }
+            ]
+        },
+        {
+            "name": "email_settings",
+            "title": "邮箱验证登录设置",
+            "items": [
+                {
+                    "name": "email_login_enabled",
+                    "title": "启用邮箱验证码登录",
+                    "type": "switch",
+                    "value": "0",
+                    "tips": "开启后前台登录页显示邮箱验证码登录入口（需系统已配置 SMTP 邮箱，否则不生效）"
                 }
             ]
         },

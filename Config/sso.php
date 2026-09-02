@@ -13,6 +13,12 @@ return [
     'wechat_oauth_enabled' => '0',
     'wechat_oauth_url' => '',
 
+    // QQ 互联登录配置
+    'qq_enabled' => '0',
+    'qq_mode' => 'web', // 登录功能选项：qrcode 扫码登录 / web 网页登录（默认）
+    'qq_app_id' => '',
+    'qq_app_key' => '',
+
     // 登录设置
     'login_title' => '统一登录',
     'allow_register' => '1',
@@ -31,6 +37,9 @@ return [
 
     // 手机验证码登录
     'phone_login_enabled' => '0',
+
+    // 邮箱验证码登录（需系统已配置 SMTP）
+    'email_login_enabled' => '0',
 
     // 短信服务商（aliyun/tencent/volcengine）
     'sms_provider' => 'aliyun',

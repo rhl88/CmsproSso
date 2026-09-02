@@ -1,7 +1,7 @@
 # 统一登录 · 特性清单
 
-> 版本：1.1.0 | 更新日期：2026-08-25
-> 应用版本：1.3.0 | 应用 ID：`cmspro.sso`
+> 版本：1.3.0 | 更新日期：2026-09-02
+> 应用版本：1.8.0 | 应用 ID：`cmspro.sso`
 
 > 本文档系统整理 CmsPro v5 应用开发框架的全部应用特性，并标注本应用中的对应实现位置，作为应用开发的官方参考。
 
@@ -62,7 +62,7 @@
 
 | # | 特性 | 说明 | 实现位置 |
 |---|------|------|---------|
-| 22 | 配置组声明 | `access_settings` / `wechat_settings` / `login_settings` / `phone_settings` 四组 | `manifest.json` |
+| 22 | 配置组声明 | `access_settings` / `wechat_settings` / `qq_settings` / `login_settings` / `phone_settings` / `email_settings` / `invite_settings` 七组 | `manifest.json` |
 | 23 | 配置三向同步 | `seedDefaultConfigs()` 以 manifest 为基准同步 | `Install.php` |
 | 24 | 配置读取服务 | `SettingService::get()` 从 `config_items` 读取，回退默认值 | `Services/SettingService.php` |
 | 25 | 配置白名单 | `ALLOWED_KEYS` 白名单，防止篡改其他配置 | `Services/SettingService.php` |
@@ -120,7 +120,12 @@
 | 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
 | 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
 | 46 | 微信登录邀请码收集 | 邀请注册开启时，先授权确认账号存在性：已绑定老用户直接登录；仅新微信用户在授权后收集邀请码——微信内授权 redirect 到 `complete-invite` 页填写，PC 扫码经 `login-status` 返回 `need_invite` 弹窗收集，均凭一次性 token 提交 `/auth/wechat/invite` 建号并事务内消费邀请码；微信端 `pc-success?result=invite/failed` 显示对应状态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete-invite.blade.php` / `Views/Home/auth/pc-success.blade.php` |
+| 46.1 | QQ 互联登录 | 后台「QQ登录设置」配置 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口；后台「功能选项」支持「QQ网页登录（默认）」（PC 与移动端均直接跳转 QQ互联 OAuth2.0 授权页，state 存 session，回调后直接 login 并 redirect）与「QQ扫码登录」（PC 端弹二维码扫码，state 存 Cache，，回调结果存 Cache，，`login-status` 轮询建登录态），手机浏览器/QQ 内始终跳转 QQ 授权；回调 code 经 `QqOauthService` 换 access_token→openid→用户信息，建号后经 `user_third_party`（platform=qq）绑定，用户名前缀 `qq`，，昵称默认「QQ用户」；state 校验失败回登录页 flash 提示 | `Controllers/HomeApi/AuthController.php` / `Services/QqOauthService.php` / `Views/Home/auth/login.blade.php` |
+| 46.2 | QQ 登录邀请码收集 | 与微信一致：邀请注册开启时先授权确认账号存在性，仅新 QQ 用户凭一次性 token 提交 `/auth/qq/invite` 建号并事务内消费邀请码（微信/QQ 共用 `complete-invite` 页，平台由路径解析） | `HomeApi/AuthController` / `Views/Home/auth/complete-invite.blade.php` |
 | 47 | 登录跳转 redirect 透传 | 登录 URL 携带 `redirect` 参数时，所有登录方式成功后均跳转到该地址（安全校验：仅允许相对路径与同主域绝对地址——含 sso/bbs 等兄弟子域，外部域名回退默认跳转，防开放重定向）：账号密码/注册随表单提交；手机验证码登录随登录请求；PC 扫码随 `login-status` 轮询与邀请码弹窗提交；微信内授权经 session 暂存（`login-url` 暂存、回调取回）；新用户完善资料页经 URL query 透传继续跳转 | `HomeApi/AuthController` / `Home/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete.blade.php` / `Views/Home/auth/complete-invite.blade.php` |
+| 48 | 账号绑定中心 | 登录后首页弹窗查看/绑定/解绑手机号、微信、QQ 三种登录方式：微信/QQ 走授权绑定（`bind-url` 生成链接，state 存 session 绑定专用键 `cmspro_sso_{platform}_bind_oauth_state` 与登录态隔离，与登录共用回调地址，回调按 state 存储位置区分模式；openid 冲突检测——被他人占用拒绝、自己已绑定提示无需重复；绑定落库 `user_third_party` 不改变登录态）；手机号走短信验证码绑定（复用登录短信配置与验证码缓存，手机号全局唯一）；解绑保护——统计密码/手机/微信/QQ 可登录方式总数（平台随机密码 `phone_`/`wx_`/`qq_` 前缀不计入），仅剩一种时拒绝解绑；昵称渲染经 HTML 转义防注入 | `HomeApi/AuthController`（bindings/bindPhone/unbind/oauthBindUrl/bindOauthCallback）/ `Routes/home-api.php` / `Views/Home/home.blade.php` |
+| 49 | 邮箱验证码登录 | 后台「邮箱验证」Tab 开关（SMTP 未配置时显示黄色警示条），前台登录页显示「邮箱」入口；`sendEmailCode()` 复用系统注册验证码缓存键 `user_register_code:{email}` 与邮件模板 `emails.register-code`，10 分钟有效，`RateLimiter` 每分钟每邮箱限发 3 次；`emailLogin()` 验证码 `hash_equals` 校验后一次性失效，已注册邮箱直接登录、未注册邮箱事务内 `createEmailUser()` 建号（用户名取 @ 前缀，冲突加随机后缀，密码随机不可登录）；`isEmailLoginEnabled()` 统一收口「开关开启 + `mail_configured()`」双重判断 | `Services/SettingService.php`（isEmailLoginEnabled）/ `Controllers/HomeApi/AuthController.php`（sendEmailCode/emailLogin/createEmailUser）/ `Routes/home-api.php` / `Views/Admin/settings/index.blade.php` / `Views/Home/auth/login.blade.php` |
+| 50 | 绑定中心按开关过滤 | 绑定中心仅展示后台已开启的快捷登录方式（手机号看 `isPhoneLoginEnabled()`，微信/QQ 看 `{platform}_enabled` 开关），与登录页入口保持一致 | `HomeApi/AuthController::bindings()` |
 
 ## 十一、版本历史
 
@@ -138,3 +143,6 @@
 | 1.5.1 | 2026-08-31 | 邀请码收集时机调整：登录授权前不再收集邀请码，改为先确认账号存在性——手机/微信老用户直接登录，仅新用户（服务端 `need_invite`）在授权后补填邀请码；微信端新增 `complete-invite` 填写页，PC 扫码弹窗与手机登录弹窗均改为动态显示邀请码输入框 |
 | 1.5.2 | 2026-08-31 | 手机登录检测前移：获取验证码阶段即检测账号存在性，邀请注册开启时新手机号需先填写有效邀请码（预校验不消费）才发送验证码，前端弹窗动态展开邀请码输入框；老手机号不受影响直接发送 |
 | 1.5.3 | 2026-08-31 | 登录跳转 redirect 全链路透传：登录 URL 携带 `redirect` 时，账号密码/手机验证码/微信扫码/微信内授权登录成功后均跳转到该地址（仅允许相对路径与同主域地址——含兄弟子域如 sso→bbs，防开放重定向）；微信内授权经 session 暂存跳转地址，新用户完善资料页经 URL query 继续透传 |
+| 1.6.0 | 2026-09-02 |新增QQ互联登录：后台「QQ登录设置」配置 QQ互联 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口（PC 扫码与端内/手机浏览器授权两部分态，邀请注册开启时新 QQ 用户经 `complete-invite` 页收集邀请码）；「功能选项」支持「QQ扫码登录」（PC 端弹二维码需 QQ 手机版扫码）与「QQ网页登录（默认）」（跳转 QQ互联 OAuth2.0 认证页授权）；QQ 回调 code 经 `QqOauthService` 换 access_token→openid→用户信息建号并绑定 `user_third_party`（platform=qq）；state 校验失败回登录页 flash 提示 |
+| 1.7.0 | 2026-09-02 | 新增账号绑定中心：登录后首页查看/绑定/解绑手机号、微信、QQ；微信/QQ 授权绑定（state 存 session 绑定专用键与登录态隔离，openid 冲突检测），手机号短信验证码绑定；解绑保护确保至少保留一种可登录方式 |
+| 1.8.0 | 2026-09-02 | 新增邮箱验证码登录：后台「邮箱验证」Tab + 前台「邮箱」入口；复用系统注册验证码缓存键与邮件模板，10 分钟有效、每分钟限发 3 次、一次性失效；未注册邮箱自动建号（用户名取 @ 前缀），邀请注册开启时凭邀请码建号；绑定中心按后台开关过滤展示 |

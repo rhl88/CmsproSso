@@ -98,6 +98,16 @@ class SettingController extends Controller
             }
         }
 
+        // QQ 登录启用时校验配置
+        if (($data['qq_enabled'] ?? '0') === '1') {
+            if (empty(trim((string) ($data['qq_app_id'] ?? '')))) {
+                return response()->json(['code' => 400, 'message' => '启用QQ登录必须填写 QQ互联 AppID'], 400);
+            }
+            if (empty(trim((string) ($data['qq_app_key'] ?? '')))) {
+                return response()->json(['code' => 400, 'message' => '启用QQ登录必须填写 QQ互联 AppKey'], 400);
+            }
+        }
+
         // 网页授权外挂启用时校验外挂地址
         if (($data['wechat_oauth_enabled'] ?? '0') === '1') {
             $oauthUrl = trim((string) ($data['wechat_oauth_url'] ?? ''));

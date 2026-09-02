@@ -27,9 +27,13 @@ class AuthController extends Controller
         $configs = [
             'login_title'     => $this->settingService->get('login_title', '统一登录'),
             'wechat_enabled'  => $this->settingService->get('wechat_enabled', '0'),
-            'phone_login_enabled' => $this->settingService->isPhoneLoginEnabled() ? '1' : '0',
-            'allow_register'  => $this->settingService->get('allow_register', '1'),
             'wechat_configured' => $this->settingService->isWechatConfigured() ? '1' : '0',
+            'qq_enabled'      => $this->settingService->get('qq_enabled', '0'),
+            'qq_mode'         => $this->settingService->get('qq_mode', 'web'),
+            'qq_configured'   => $this->settingService->isQqConfigured() ? '1' : '0',
+            'phone_login_enabled' => $this->settingService->isPhoneLoginEnabled() ? '1' : '0',
+            'email_login_enabled' => $this->settingService->isEmailLoginEnabled() ? '1' : '0',
+            'allow_register'  => $this->settingService->get('allow_register', '1'),
             'invite_enabled'  => $this->settingService->get('invite_enabled', '0'),
         ];
 
@@ -113,6 +117,15 @@ class AuthController extends Controller
     }
 
     /**
+     * QQ 授权回调（页面转发给 HomeApi 处理）
+     */
+    public function qqCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->qqCallback($request);
+    }
+
+    /**
      * PC 扫码登录成功提示页
      */
     public function pcSuccessForm()
@@ -121,19 +134,24 @@ class AuthController extends Controller
     }
 
     /**
-     * 微信新用户邀请码填写页（邀请注册开启时，微信内授权回调发现新用户后跳转）
+     * 社交新用户邀请码填写页（邀请注册开启时，授权回调发现新用户后跳转；微信/QQ 通用）
+     *
+     * 平台由请求路径解析（/auth/wechat/complete-invite 或 /auth/qq/complete-invite），
+     * 用于提交邀请码时调用对应平台接口。
      */
     public function completeInviteForm(Request $request)
     {
         $token = (string) $request->input('token', '');
+        $platform = str_contains($request->path(), 'qq') ? 'qq' : 'wechat';
 
         return view('cmspro.sso::Home.auth.complete-invite', [
-            'token' => $token,
+            'token'    => $token,
+            'platform' => $platform,
         ]);
     }
 
     /**
-     * 首次微信登录完善资料页
+     * 首次社交登录完善资料页（微信/QQ 通用）
      */
     public function completeForm(Request $request)
     {
@@ -142,8 +160,12 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/login'));
         }
 
+        $platform = str_contains($request->path(), 'qq') ? 'qq' : 'wechat';
+
         return view('cmspro.sso::Home.auth.complete', [
-            'user' => $user,
+            'user'     => $user,
+            'platform' => $platform,
+            'redirect' => (string) $request->input('redirect', ''),
         ]);
     }
 

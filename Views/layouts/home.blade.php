@@ -184,6 +184,77 @@
             color: #fff;
         }
         .sso-phone-btn i { font-size: 20px; }
+        .sso-qq-btn {
+            flex: 1;
+            height: 44px;
+            border: 1px solid #12b7f5;
+            color: #12b7f5;
+            background: #fff;
+            border-radius: var(--radius);
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .sso-qq-btn:hover {
+            background: #12b7f5;
+            color: #fff;
+        }
+        .sso-qq-icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            border-radius: 50%;
+            background: #12b7f5;
+            position: relative;
+        }
+        .sso-qq-btn:hover .sso-qq-icon { background: #fff; }
+        .sso-qq-icon::before,
+        .sso-qq-icon::after {
+            content: '';
+            position: absolute;
+            border-radius: 50%;
+            background: #fff;
+        }
+        .sso-qq-btn:hover .sso-qq-icon::before,
+        .sso-qq-btn:hover .sso-qq-icon::after { background: #12b7f5; }
+        .sso-email-btn {
+            flex: 1;
+            height: 44px;
+            border: 1px solid #ff9800;
+            color: #ff9800;
+            background: #fff;
+            border-radius: var(--radius);
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .sso-email-btn:hover {
+            background: #ff9800;
+            color: #fff;
+        }
+        .sso-email-btn i { font-size: 20px; }
+        /* 企鹅造型：头部圆 + 左右翼 */
+        .sso-qq-icon::before {
+            width: 10px;
+            height: 13px;
+            top: 2px;
+            left: 5px;
+        }
+        .sso-qq-icon::after {
+            width: 14px;
+            height: 5px;
+            top: 13px;
+            left: 3px;
+            border-radius: 0 0 7px 7px;
+        }
         .sso-link-row {
             display: flex;
             justify-content: space-between;

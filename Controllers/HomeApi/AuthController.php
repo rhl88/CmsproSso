@@ -8,6 +8,7 @@ use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
 use App\Apps\CmsproSso\Services\SmsService;
 use App\Apps\CmsproSso\Services\WechatOauthService;
+use App\Apps\CmsproSso\Services\QqOauthService;
 use App\Models\User;
 use App\Models\UserGroup;
 use App\Models\UserThirdParty;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
@@ -27,10 +29,12 @@ class AuthController extends Controller
     protected const MAX_FAILURES = 5;      // 最大连续失败次数
     protected const LOCK_MINUTES = 15;     // 锁定分钟数
 
-    // Session 键：微信授权 state（CSRF 防护）
-    protected const SESSION_OAUTH_STATE = 'cmspro_sso_wechat_oauth_state';
-    // Session 键：微信登录跳转地址（授权跳微信后会丢失 query，暂存 session 供回调使用）
-    protected const SESSION_OAUTH_REDIRECT = 'cmspro_sso_wechat_oauth_redirect';
+    // Session 键：社交授权 state（CSRF 防护）与登录跳转地址，按平台区分
+    // 实际键名：cmspro_sso_{platform}_oauth_state / cmspro_sso_{platform}_oauth_redirect
+    // 微信固定使用 wechat，保证既有会话/测试向后兼容
+    protected const SESSION_OAUTH_PREFIX = 'cmspro_sso_';
+    protected const SESSION_OAUTH_STATE_SUFFIX = '_oauth_state';
+    protected const SESSION_OAUTH_REDIRECT_SUFFIX = '_oauth_redirect';
 
     // Cache 键前缀：PC 扫码登录 state + 登录结果（跨设备扫码场景）
     protected const CACHE_LOGIN_STATE_PREFIX = 'cmspro_sso_login_state:';
@@ -44,10 +48,44 @@ class AuthController extends Controller
     protected const PHONE_CODE_TTL = 10;          // 验证码有效期（分钟）
     protected const PHONE_CODE_MAX_ATTEMPTS = 3;  // 每分钟内单个手机号最多发送次数
 
+    // Cache 键前缀：邮箱验证码（与系统注册验证码共用缓存键，校验规则一致）
+    protected const CACHE_EMAIL_CODE_PREFIX = 'user_register_code:';
+    protected const EMAIL_CODE_TTL = 10;          // 验证码有效期（分钟）
+    protected const EMAIL_CODE_MAX_ATTEMPTS = 3;  // 每分钟内单个邮箱最多发送次数
+
     public function __construct(
         protected SettingService $settingService,
         protected SmsService $smsService
     ) {
+    }
+
+    /**
+     * 会话键：社交授权 state（CSRF 防护），按平台区分
+     *
+     * 微信为 cmspro_sso_wechat_oauth_state，QQ 为 cmspro_sso_qq_oauth_state，
+     * 既有的微信会话/测试键名保持不变，向后兼容。
+     */
+    protected function sessionStateKey(string $platform): string
+    {
+        return self::SESSION_OAUTH_PREFIX . $platform . self::SESSION_OAUTH_STATE_SUFFIX;
+    }
+
+    /**
+     * 会话键：登录跳转地址（授权前暂存，回调后取回继续透传），按平台区分
+     */
+    protected function sessionRedirectKey(string $platform): string
+    {
+        return self::SESSION_OAUTH_PREFIX . $platform . self::SESSION_OAUTH_REDIRECT_SUFFIX;
+    }
+
+    /**
+     * 会话键：社交绑定授权 state（绑定模式专用，与登录态区分，防止误登录）
+     *
+     * 键名：cmspro_sso_{platform}_bind_oauth_state
+     */
+    protected function sessionBindStateKey(string $platform): string
+    {
+        return self::SESSION_OAUTH_PREFIX . $platform . '_bind_oauth_state';
     }
 
     /**
@@ -371,6 +409,180 @@ class AuthController extends Controller
     }
 
     /**
+     * 发送邮箱验证码邮件
+     */
+    public function sendEmailCode(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isEmailLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '邮箱验证码登录未启用'], 400);
+        }
+
+        $validated = $request->validate([
+            'email' => 'required|string|email|max:100',
+            'invite_code' => 'nullable|string|max:32',
+        ], [
+            'email.required' => '请输入邮箱地址',
+            'email.email'    => '邮箱格式不正确',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+
+        // 邀请注册开启时，获取验证码前先确认邮箱账号是否存在：
+        // 已存在 → 正常发送验证码登录；不存在 → 需凭有效邀请码获取验证码走注册步骤
+        if ($this->settingService->get('invite_enabled', '0') === '1'
+            && ! User::where('email', $email)->exists()) {
+            $inviteCode = strtoupper(trim((string) $request->input('invite_code', '')));
+
+            if ($inviteCode === '') {
+                return response()->json([
+                    'code'    => 422,
+                    'message' => '该邮箱未注册，注册新账号需要邀请码',
+                    'data'    => ['need_invite' => true],
+                ], 422);
+            }
+
+            // 预校验邀请码可用性（不消费，建号时才消费）
+            $error = $this->checkInviteCodeUsable($inviteCode);
+            if ($error !== null) {
+                return response()->json(['code' => 422, 'message' => $error], 422);
+            }
+        }
+
+        $throttleKey = 'cmspro_sso_email_throttle:' . $email;
+
+        if (RateLimiter::tooManyAttempts($throttleKey, self::EMAIL_CODE_MAX_ATTEMPTS)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return response()->json(['code' => 429, 'message' => "发送过于频繁，请 {$seconds} 秒后再试"], 429);
+        }
+        RateLimiter::hit($throttleKey, 60);
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        Cache::put(self::CACHE_EMAIL_CODE_PREFIX . $email, $code, now()->addMinutes(self::EMAIL_CODE_TTL));
+
+        try {
+            Mail::send('emails.register-code', ['code' => $code, 'minutes' => self::EMAIL_CODE_TTL], function ($message) use ($email) {
+                $message->to($email)->subject('【用户中心】登录验证码');
+            });
+        } catch (\Throwable $e) {
+            // 发送失败清除验证码缓存，避免残留
+            Cache::forget(self::CACHE_EMAIL_CODE_PREFIX . $email);
+            Log::error('邮箱验证码发送失败', ['email' => $email, 'error' => $e->getMessage()]);
+
+            return response()->json(['code' => 500, 'message' => '邮件发送失败，请稍后重试'], 500);
+        }
+
+        return response()->json(['code' => 0, 'message' => '验证码已发送，请查收邮件']);
+    }
+
+    /**
+     * 邮箱验证码登录
+     *
+     * 邮箱已存在则自动登录；不存在则自动创建用户并跳转完善资料页。
+     */
+    public function emailLogin(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isEmailLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '邮箱验证码登录未启用'], 400);
+        }
+
+        $validated = $request->validate([
+            'email' => 'required|string|email|max:100',
+            'code'  => 'required|string|size:6',
+            'invite_code' => 'nullable|string|max:32',
+        ], [
+            'email.required' => '请输入邮箱地址',
+            'email.email'    => '邮箱格式不正确',
+            'code.required'  => '请输入验证码',
+            'code.size'      => '验证码必须是6位',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $cachedCode = Cache::get(self::CACHE_EMAIL_CODE_PREFIX . $email);
+
+        if (! $cachedCode || ! hash_equals((string) $cachedCode, (string) $validated['code'])) {
+            return response()->json(['code' => 422, 'message' => '验证码不正确或已过期'], 422);
+        }
+
+        // 验证码一次性失效
+        Cache::forget(self::CACHE_EMAIL_CODE_PREFIX . $email);
+
+        $user = User::where('email', $email)->first();
+        $isNew = $user === null;
+        $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
+
+        if ($isNew) {
+            // 邀请注册开启时，新邮箱自动建号也需邀请码（need_invite 供前端动态显示邀请码输入框）
+            if ($inviteRequired && empty($validated['invite_code'])) {
+                return response()->json([
+                    'code'    => 422,
+                    'message' => '注册新账号需要邀请码',
+                    'data'    => ['need_invite' => true],
+                ], 422);
+            }
+
+            try {
+                $user = DB::transaction(function () use ($email, $validated, $inviteRequired) {
+                    $user = $this->createEmailUser($email);
+
+                    if ($inviteRequired) {
+                        $error = $this->consumeInviteCode($validated['invite_code'], $user->id);
+                        if ($error !== null) {
+                            throw new \RuntimeException($error);
+                        }
+                    }
+
+                    return $user;
+                });
+            } catch (\RuntimeException $e) {
+                return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
+            }
+        }
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+        $user->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($user->id, 'email', $request, 1, $isNew ? '邮箱验证码登录成功（首次创建）' : '邮箱验证码登录成功');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '登录成功',
+            'data'    => [
+                'redirect' => $isNew
+                    ? $this->completeUrl((string) $request->input('redirect', ''))
+                    : $this->resolveRedirect($request),
+                'is_new'   => $isNew,
+            ],
+        ]);
+    }
+
+    /**
+     * 首次邮箱登录：创建用户（用户名优先取邮箱 @ 前缀，密码随机不可登录）
+     */
+    protected function createEmailUser(string $email): User
+    {
+        $defaultGroup = UserGroup::default()->enabled()->first();
+
+        // 用户名：邮箱 @ 前缀，冲突时追加随机后缀保证唯一
+        $baseUsername = strstr($email, '@', true) ?: $email;
+        $username = $baseUsername;
+        while (User::where('username', $username)->exists()) {
+            $username = $baseUsername . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+        }
+
+        $randomPassword = 'email_' . bin2hex(random_bytes(16));
+
+        return User::create([
+            'username' => $username,
+            'password' => Hash::make($randomPassword),
+            'nickname' => $baseUsername,
+            'email'    => $email,
+            'group_id' => $defaultGroup?->id,
+            'status'   => 1,
+        ]);
+    }
+
+    /**
      * 退出登录
      */
     public function logout(Request $request): JsonResponse
@@ -411,6 +623,197 @@ class AuthController extends Controller
     }
 
     /**
+     * 查询当前用户第三方/手机绑定状态（绑定中心）
+     */
+    public function bindings(Request $request): JsonResponse
+    {
+        $user = auth('web')->user();
+        if (!$user) {
+            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        }
+
+        // 仅展示后台开启的快捷登录方式（与登录页入口开关一致）
+        $platforms = ['phone', 'email', 'wechat', 'qq'];
+        $enabledPlatforms = array_values(array_filter($platforms, function ($platform) {
+            if ($platform === 'phone') {
+                return $this->settingService->isPhoneLoginEnabled();
+            }
+            if ($platform === 'email') {
+                return $this->settingService->isEmailLoginEnabled();
+            }
+
+            return $this->settingService->get($platform . '_enabled', '0') === '1';
+        }));
+
+        $thirdParty = UserThirdParty::where('user_id', $user->id)->get()->keyBy('platform');
+        $ways = $this->countLoginWays($user);
+
+        // 当前可登录方式总数（含密码、手机、邮箱、微信、QQ）：仅剩 1 种时该方式不可解绑（防锁死）
+        $locked = $ways <= 1;
+
+        $data = [];
+        foreach ($enabledPlatforms as $platform) {
+            if ($platform === 'phone') {
+                $data['phone'] = [
+                    'bound' => (bool) $user->phone,
+                    'phone' => $user->phone ? $this->maskPhone($user->phone) : '',
+                    'locked' => $locked && $user->phone,
+                ];
+                continue;
+            }
+            if ($platform === 'email') {
+                $data['email'] = [
+                    'bound' => (bool) $user->email,
+                    'email' => $user->email ? $this->maskEmail($user->email) : '',
+                    'locked' => $locked && $user->email,
+                ];
+                continue;
+            }
+            $data[$platform] = [
+                'bound' => $thirdParty->has($platform),
+                'nickname' => (string) ($thirdParty->get($platform)?->nickname ?? ''),
+                'avatar' => (string) ($thirdParty->get($platform)?->avatar ?? ''),
+                'locked' => $locked && $thirdParty->has($platform),
+            ];
+        }
+
+        $data['platforms'] = $enabledPlatforms;
+
+        return response()->json(['code' => 0, 'message' => 'ok', 'data' => $data]);
+    }
+
+    /**
+     * 解绑第三方/手机（绑定中心）
+     *
+     * @param string $platform 目标登录方式：phone / wechat / qq
+     */
+    public function unbind(Request $request, string $platform): JsonResponse
+    {
+        $user = auth('web')->user();
+        if (!$user) {
+            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        }
+
+        if (!in_array($platform, ['phone', 'email', 'wechat', 'qq'], true)) {
+            return response()->json(['code' => 400, 'message' => '不支持的解绑类型'], 400);
+        }
+
+        // 解绑保护：解绑后仍须保留至少一种可登录方式（防账号锁死）
+        $remains = $this->countLoginWays($user);
+        if ($platform === 'phone') {
+            $remains -= $user->phone ? 1 : 0;
+        } elseif ($platform === 'email') {
+            $remains -= $user->email ? 1 : 0;
+        } else {
+            $remains -= $this->hasBinding($user, $platform) ? 1 : 0;
+        }
+        if ($remains < 1) {
+            return response()->json(['code' => 422, 'message' => '当前仅剩此一种登录方式，不可解绑'], 422);
+        }
+
+        if ($platform === 'phone') {
+            $user->update(['phone' => null, 'phone_verified_at' => null]);
+            return response()->json(['code' => 0, 'message' => '手机号已解绑']);
+        }
+
+        // 邮箱：清空用户邮箱（邮箱验证码登录凭据，全局唯一）
+        if ($platform === 'email') {
+            if (!$user->email) {
+                return response()->json(['code' => 400, 'message' => '尚未绑定邮箱'], 400);
+            }
+            $user->update(['email' => null]);
+            return response()->json(['code' => 0, 'message' => '邮箱已解绑']);
+        }
+
+        // 第三方平台：删除绑定记录
+        $binding = UserThirdParty::where('user_id', $user->id)
+            ->where('platform', $platform)
+            ->first();
+        if (!$binding) {
+            return response()->json(['code' => 400, 'message' => '该平台尚未绑定'], 400);
+        }
+        $binding->delete();
+
+        return response()->json(['code' => 0, 'message' => $this->platformUserLabel($platform) . '已解绑']);
+    }
+
+    /**
+     * 统计当前用户可登录方式总数（密码、手机号、微信、QQ、邮箱）
+     */
+    protected function countLoginWays(User $user): int
+    {
+        $count = 0;
+        if ($this->userCanPasswordLogin($user)) {
+            $count++;
+        }
+        if ($user->phone) {
+            $count++;
+        }
+        if ($user->email) {
+            $count++;
+        }
+        foreach (['wechat', 'qq'] as $platform) {
+            if ($this->hasBinding($user, $platform)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * 判断用户是否设置过可登录密码
+     *
+     * 手机号注册/社交首次登录/邮箱注册生成的平台随机密码（phone_/wx_/qq_/email_ 前缀）不可用于登录。
+     */
+    protected function userCanPasswordLogin(User $user): bool
+    {
+        $password = (string) $user->getRawOriginal('password');
+        if ($password === '') {
+            return false;
+        }
+        foreach (['phone_', 'wx_', 'qq_', 'email_'] as $prefix) {
+            if (str_starts_with($password, $prefix)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * 判断用户是否已绑定指定第三方平台
+     */
+    protected function hasBinding(User $user, string $platform): bool
+    {
+        return UserThirdParty::where('user_id', $user->id)
+            ->where('platform', $platform)
+            ->exists();
+    }
+
+    /**
+     * 手机号脱敏（138****1234）
+     */
+    protected function maskPhone(string $phone): string
+    {
+        return strlen($phone) >= 7
+            ? substr($phone, 0, 3) . '****' . substr($phone, -4)
+            : $phone;
+    }
+
+    /**
+     * 邮箱脱敏（ab****@domain.com）
+     */
+    protected function maskEmail(string $email): string
+    {
+        $at = strpos($email, '@');
+        if ($at === false || $at < 2) {
+            return $email;
+        }
+        return substr($email, 0, 2) . '****' . substr($email, $at);
+    }
+
+    /**
      * 生成公众号网页授权登录链接
      *
      * 支持三种设备场景：
@@ -424,35 +827,153 @@ class AuthController extends Controller
      */
     public function wechatLoginUrl(Request $request): JsonResponse
     {
-        // 微信登录未启用或未配置
-        if ($this->settingService->get('wechat_enabled', '0') !== '1') {
-            return response()->json(['code' => 400, 'message' => '微信登录未启用'], 400);
+        return $this->oauthLoginUrl($request, 'wechat');
+    }
+
+    /**
+     * QQ 授权登录 URL（PC 扫码 / 手机 / QQ 内等场景走标准 OAuth2）
+     */
+    public function qqLoginUrl(Request $request): JsonResponse
+    {
+        return $this->oauthLoginUrl($request, 'qq');
+    }
+
+    /**
+     * 微信绑定授权 URL（绑定中心：已登录用户绑定微信）
+     */
+    public function wechatBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'wechat');
+    }
+
+    /**
+     * QQ 绑定授权 URL（绑定中心：已登录用户绑定 QQ）
+     */
+    public function qqBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'qq');
+    }
+
+    /**
+     * 生成社交账号绑定授权链接（微信/QQ 通用，绑定中心）
+     *
+     * 与登录授权的差异：
+     *   1. state 存 session 绑定专用键（cmspro_sso_{platform}_bind_oauth_state），与登录态隔离；
+     *   2. 仅登录用户可发起（路由受 cmspro.sso.auth 中间件保护）；
+     *   3. 回调后走绑定落库流程，不建立新登录态、不改变当前用户。
+     *
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    protected function oauthBindUrl(Request $request, string $platform): JsonResponse
+    {
+        $label = $this->platformUserLabel($platform);
+
+        // 平台未启用或未配置
+        if ($this->settingService->get($platform . '_enabled', '0') !== '1') {
+            return response()->json(['code' => 400, 'message' => $label . '登录未启用'], 400);
         }
-        if (!$this->settingService->isWechatConfigured()) {
-            return response()->json(['code' => 400, 'message' => '微信登录未配置，请联系管理员'], 400);
+        $configured = $platform === 'qq'
+            ? $this->settingService->isQqConfigured()
+            : $this->settingService->isWechatConfigured();
+        if (!$configured) {
+            return response()->json(['code' => 400, 'message' => $label . '登录未配置，请联系管理员'], 400);
+        }
+
+        // 已绑定该平台时拒绝重复绑定
+        $user = auth('web')->user();
+        if ($user && $this->hasBinding($user, $platform)) {
+            return response()->json(['code' => 400, 'message' => '已绑定' . $label . '，请先解绑'], 400);
+        }
+
+        // 授权回调地址（与登录共用，回调按 state 存储位置区分登录/绑定模式）
+        $callbackUrl = ShareService::frontUrl('/auth/' . $platform . '/callback');
+        $state = md5(uniqid((string) mt_rand(), true));
+
+        // 绑定模式：state 存 session 绑定专用键（与登录 state 键隔离，防止误登录）
+        $request->session()->put($this->sessionBindStateKey($platform), $state);
+
+        // 微信外挂模式：构建跳转到外挂脚本的 URL（QQ 无外挂模式）
+        if ($platform === 'wechat' && $this->settingService->isWechatOauthProxyEnabled()) {
+            $proxyUrl = $this->settingService->getWechatOauthUrl();
+            $separator = strpos($proxyUrl, '?') === false ? '?' : '&';
+            $url = $proxyUrl . $separator . http_build_query([
+                'action'     => 'authorize',
+                'type'       => 'userinfo',
+                'return_url' => $callbackUrl,
+                'state'      => $state,
+            ]);
+
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['url' => $url, 'mode' => 'proxy', 'state' => $state],
+            ]);
+        }
+
+        // 原生模式：直接调用对应平台网页授权
+        $oauthService = $platform === 'qq'
+            ? app(QqOauthService::class)
+            : app(WechatOauthService::class);
+        $result = $oauthService->buildOauthRedirectUrl($callbackUrl, $state);
+
+        if (!$result['success']) {
+            return response()->json(['code' => 400, 'message' => $result['message']], 400);
+        }
+
+        return response()->json([
+            'code'    => 0,
+            'message' => 'ok',
+            'data'    => ['url' => $result['url'], 'mode' => 'native', 'state' => $state],
+        ]);
+    }
+
+    /**
+     * 生成社交化授权登录链接（微信/QQ 通用）
+     *
+     * 支持两种设备场景：
+     *   1. PC 端（device=pc）：state 存 Cache，PC 端显示二维码扫码，回调后将结果存 Cache，PC 端轮询建立登录态
+     *   2. 普通模式（微信内/QQ 内/手机浏览器）：state 存 session，回调后直接 login 并 redirect
+     *
+     * 微信额外支持外挂授权模式（wechat_oauth_enabled），QQ 仅走标准 OAuth2。
+     *
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    protected function oauthLoginUrl(Request $request, string $platform): JsonResponse
+    {
+        $label = $this->platformUserLabel($platform);
+
+        // 平台未启用或未配置
+        if ($this->settingService->get($platform . '_enabled', '0') !== '1') {
+            return response()->json(['code' => 400, 'message' => $label . '登录未启用'], 400);
+        }
+        $configured = $platform === 'qq'
+            ? $this->settingService->isQqConfigured()
+            : $this->settingService->isWechatConfigured();
+        if (!$configured) {
+            return response()->json(['code' => 400, 'message' => $label . '登录未配置，请联系管理员'], 400);
         }
 
         $device = (string) $request->input('device', '');
-        // 授权回调地址（固定为统一登录微信回调，外挂模式下作为 return_url 回传给外挂）
-        $callbackUrl = ShareService::frontUrl('/auth/wechat/callback');
+        // 授权回调地址（固定为统一登录对应平台回调，外挂模式下作为 return_url 回传给外挂）
+        $callbackUrl = ShareService::frontUrl('/auth/' . $platform . '/callback');
 
         // state 防 CSRF：随机串
         $state = md5(uniqid((string) mt_rand(), true));
 
         // 说明：邀请注册模式下不在授权前收集邀请码——先完成授权确认账号是否已存在，
-        // 已绑定老用户直接登录，仅新用户在回调后（PC 弹窗/微信端页面）提示填写邀请码。
+        // 已绑定老用户直接登录，仅新用户在回调后（PC 弹窗/端内页面）提示填写邀请码。
 
         if ($device === 'pc') {
             // PC 扫码模式：state 存 Cache（跨设备，回调时 PC 端 session 不可用）
             Cache::put(self::CACHE_LOGIN_STATE_PREFIX . $state, true, self::LOGIN_STATE_TTL);
         } else {
-            // 普通模式（微信内）：state 存 session，跳转地址暂存 session（回调后使用）
-            $request->session()->put(self::SESSION_OAUTH_STATE, $state);
-            $request->session()->put(self::SESSION_OAUTH_REDIRECT, trim((string) $request->input('redirect', '')));
+            // 普通模式：state 存 session，跳转地址暂存 session（回调后使用）
+            $request->session()->put($this->sessionStateKey($platform), $state);
+            $request->session()->put($this->sessionRedirectKey($platform), trim((string) $request->input('redirect', '')));
         }
 
-        // 外挂模式：构建跳转到外挂脚本的 URL
-        if ($this->settingService->isWechatOauthProxyEnabled()) {
+        // 微信外挂模式：构建跳转到外挂脚本的 URL（QQ 无外挂模式）
+        if ($platform === 'wechat' && $this->settingService->isWechatOauthProxyEnabled()) {
             $proxyUrl = $this->settingService->getWechatOauthUrl();
             $separator = strpos($proxyUrl, '?') === false ? '?' : '&';
             $url = $proxyUrl . $separator . http_build_query([
@@ -469,9 +990,11 @@ class AuthController extends Controller
             ]);
         }
 
-        // 原生模式：直接调用微信网页授权
-        $openidService = app(WechatOauthService::class);
-        $result = $openidService->buildOauthRedirectUrl($callbackUrl, $state);
+        // 原生模式：直接调用对应平台网页授权
+        $oauthService = $platform === 'qq'
+            ? app(QqOauthService::class)
+            : app(WechatOauthService::class);
+        $result = $oauthService->buildOauthRedirectUrl($callbackUrl, $state);
 
         if (!$result['success']) {
             return response()->json(['code' => 400, 'message' => $result['message']], 400);
@@ -497,48 +1020,106 @@ class AuthController extends Controller
      */
     public function wechatCallback(Request $request)
     {
+        return $this->oauthCallback($request, 'wechat');
+    }
+
+    /**
+     * QQ 授权回调（页面转发入口）
+     */
+    public function qqCallback(Request $request)
+    {
+        return $this->oauthCallback($request, 'qq');
+    }
+
+    /**
+     * 社交化授权回调（微信/QQ 通用）
+     *
+     * 支持两种授权模式：
+     *   1. 外挂模式（仅微信）：外挂脚本完成 code 换 openid 后跳回，附带 openid+state+可选 userinfo
+     *   2. 原生模式：平台直接回调，附带 code+state，由本应用用 code 换 openid
+     *
+     * 支持两种设备场景（通过 state 存储位置区分）：
+     *   1. PC 扫码模式：state 在 Cache 中，回调后将登录结果存 Cache，redirect 到提示页，PC 端轮询建立登录态
+     *   2. 普通模式：state 在 session 中，回调后直接 login 并 redirect
+     *
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    public function oauthCallback(Request $request, string $platform)
+    {
+        $label = $this->platformUserLabel($platform);
+        $stateKey = $this->sessionStateKey($platform);
+        $redirectKey = $this->sessionRedirectKey($platform);
+
         $code = (string) $request->query('code', '');
         $state = (string) $request->query('state', '');
 
-        // 校验 state：先查 Cache（PC 扫码模式），再查 session（普通模式）
-        $isPcMode = $state !== '' && Cache::has(self::CACHE_LOGIN_STATE_PREFIX . $state);
-        if ($isPcMode) {
+        // 绑定模式（已登录用户在首页发起绑定）：state 存 session 单独键，
+        // 校验通过 → 解析授权数据后走绑定落库流程（不建立新登录态、不改变当前用户）
+        $bindStateKey = $this->sessionBindStateKey($platform);
+        $expectedBindState = (string) $request->session()->get($bindStateKey, '');
+        $isBindMode = $expectedBindState !== '' && $state !== ''
+            && hash_equals($expectedBindState, $state);
+
+        if ($isBindMode) {
+            // 绑定模式：state 使用绑定会话键，消费后即失效
+            $request->session()->forget($bindStateKey);
+            $isPcMode = false;
+        } elseif ($state !== '' && Cache::has(self::CACHE_LOGIN_STATE_PREFIX . $state)) {
+
+
+
+            // 校验 state：PC 扫码模式（state 存 Cache，跨设备）
+            $isPcMode = true;
             Cache::pull(self::CACHE_LOGIN_STATE_PREFIX . $state);
         } else {
-            $expectedState = (string) $request->session()->get(self::SESSION_OAUTH_STATE, '');
+            $isPcMode = false;
+            $expectedState = (string) $request->session()->get($stateKey, '');
             if ($expectedState === '' || $state === '' || !hash_equals($expectedState, $state)) {
-                abort(400, '授权状态校验失败，请重新登录');
+
+                // 失败态回登录页提示（而非 abort：浏览器场景会被全局异常兜底渲染为 500）
+                $redirect = (string) $request->session()->pull($redirectKey, '');
+                $loginUrl = ShareService::frontUrl('/login');
+                if ($redirect !== '') {
+                    $loginUrl .= '?redirect=' . urlencode($redirect);
+                }
+
+                return redirect($loginUrl)->with('error', '授权状态校验失败，请重新登录');
             }
-            $request->session()->forget(self::SESSION_OAUTH_STATE);
+            $request->session()->forget($stateKey);
         }
 
-        // 外挂模式错误回传（外挂处理失败时可能带 error 参数）
+        // 外挂模式错误回传（仅微信外挂会带 error 参数）
         $error = (string) $request->query('error', '');
         if ($error !== '') {
-            Log::warning('微信授权外挂回调错误', ['error' => $error, 'errmsg' => $request->query('errmsg')]);
-            abort(400, '微信授权失败：' . $error);
+            Log::warning($label . '授权外挂回调错误', ['error' => $error, 'errmsg' => $request->query('errmsg')]);
+            abort(400, $label . '授权失败：' . $error);
         }
 
         // 获取 openid + 用户信息（原生模式用 code 换，外挂模式直接读）
         if ($code !== '') {
-            $data = $this->resolveNativeOauthData($code);
+            $data = $this->resolveNativeOauthData($code, $platform);
         } else {
             $data = $this->resolveProxyOauthData($request);
         }
 
         if ($data === null) {
-            abort(400, '微信授权失败，未获取到 openid');
+            abort(400, $label . '授权失败，未获取到 openid');
+        }
+
+        // 绑定模式：已登录用户发起绑定，校验通过 → 走绑定落库流程（不建立新登录态、不改变当前用户）
+        if ($isBindMode) {
+            return $this->bindOauthCallback($request, $data, $platform);
         }
 
         // 邀请注册模式下：先检查账号是否已存在——老用户直接登录，仅新用户需要邀请码
-        $existingUser = $this->findWechatUser((string) $data['openid']);
+        $existingUser = $this->findOauthUser((string) $data['openid'], $platform);
         $needInvite = $existingUser === null
             && $this->settingService->get('invite_enabled', '0') === '1';
 
         // PC 扫码模式：解析/创建用户，将结果存 Cache，redirect 到提示页
         if ($isPcMode) {
             if ($needInvite) {
-                // 新微信用户且开启邀请注册：授权数据暂存 Cache，PC 端轮询到 need_invite 后弹窗收集邀请码
+                // 新用户且开启邀请注册：授权数据暂存 Cache，PC 端轮询到 need_invite 后弹窗收集邀请码
                 $token = bin2hex(random_bytes(16));
                 Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
                 Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
@@ -546,18 +1127,18 @@ class AuthController extends Controller
                     'invite_token' => $token,
                 ], self::LOGIN_STATE_TTL);
 
-                return redirect(ShareService::frontUrl('/auth/wechat/pc-success?result=invite'));
+                return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success?result=invite'));
             }
 
             try {
-                [$user, $isNew] = $this->resolveOrCreateUser($data);
+                [$user, $isNew] = $this->resolveOrCreateUser($data, '', $platform);
             } catch (\RuntimeException $e) {
-                // 建号错误：结果存 Cache 供 PC 端轮询展示，微信端提示页显示失败态
+                // 建号错误：结果存 Cache 供 PC 端轮询展示，提示页显示失败态
                 Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
                     'error' => $e->getMessage(),
                 ], self::LOGIN_STATE_TTL);
 
-                return redirect(ShareService::frontUrl('/auth/wechat/pc-success?result=failed'));
+                return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success?result=failed'));
             }
 
             Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
@@ -565,18 +1146,18 @@ class AuthController extends Controller
                 'is_new'  => $isNew,
             ], self::LOGIN_STATE_TTL);
 
-            return redirect(ShareService::frontUrl('/auth/wechat/pc-success'));
+            return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success'));
         }
 
-        // 普通模式（微信内）：新用户且开启邀请注册时，redirect 到微信端邀请码填写页
+        // 普通模式（平台内/手机浏览器）：新用户且开启邀请注册时，redirect 到邀请码填写页
         // 登录页携带的跳转地址已在授权前暂存 session，此处取回并继续透传
-        $redirect = (string) $request->session()->pull(self::SESSION_OAUTH_REDIRECT, '');
+        $redirect = (string) $request->session()->pull($redirectKey, '');
 
         if ($needInvite) {
             $token = bin2hex(random_bytes(16));
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
 
-            $inviteUrl = ShareService::frontUrl('/auth/wechat/complete-invite?token=' . $token);
+            $inviteUrl = ShareService::frontUrl('/auth/' . $platform . '/complete-invite?token=' . $token);
             if ($redirect !== '') {
                 $inviteUrl .= '&redirect=' . urlencode($redirect);
             }
@@ -586,19 +1167,196 @@ class AuthController extends Controller
 
         // 老用户或未开启邀请注册：login 并 redirect
         try {
-            return $this->loginOrCreateUser($request, $data, '', $redirect);
+            return $this->loginOrCreateUser($request, $data, '', $redirect, $platform);
         } catch (\RuntimeException $e) {
             abort(400, $e->getMessage() . '，请返回登录页重试');
         }
     }
 
     /**
-     * PC 扫码登录：轮询检查登录状态
+     * 社交绑定回调（微信/QQ 通用，绑定中心）
      *
-     * PC 端弹出二维码后，前端轮询此接口。检测到登录结果后在 PC 端建立 session。
+     * 已登录用户在首页发起绑定，授权完成后进入此处落库：
+     *   - openid 已被其他账号绑定 → 回首页提示冲突；
+     *   - openid 未被绑定 → 创建 UserThirdParty 记录并回首页提示成功。
+     *
+     * 不建立新登录态、不改变当前登录用户。
+     *
+     * @param array $data 授权数据（openid/nickname/avatar/access_token 等）
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    protected function bindOauthCallback(Request $request, array $data, string $platform)
+    {
+        $user = auth('web')->user();
+        $homeUrl = ShareService::frontUrl('/home');
+
+        // 绑定过程中登录态丢失（session 过期等）：回登录页重新登录
+        if (!$user) {
+            return redirect(ShareService::frontUrl('/login'))->with('error', '登录已过期，请重新登录后再绑定');
+        }
+
+        $label = $this->platformUserLabel($platform);
+        $openid = (string) $data['openid'];
+
+        // openid 冲突检测：已被其他账号绑定时拒绝（一个 openid 仅能绑定一个账号）
+        $conflict = UserThirdParty::where('platform', $platform)
+            ->where('open_id', $openid)
+            ->first();
+        if ($conflict) {
+            $message = $conflict->user_id === $user->id
+                ? '已绑定' . $label . '，无需重复绑定'
+                : '该' . $label . '已绑定其他账号，无法重复绑定';
+            return redirect($homeUrl)->with('error', $message);
+        }
+
+        // 落库绑定关系（不改变当前登录态）
+        UserThirdParty::create([
+            'user_id'        => $user->id,
+            'platform'       => $platform,
+            'open_id'        => $openid,
+            'union_id'       => $data['unionid'] ?? null,
+            'nickname'       => $data['nickname'] ?? null,
+            'avatar'         => $data['avatar'] !== '' ? $data['avatar'] : null,
+            'access_token'   => $data['access_token'] ?? null,
+            'refresh_token'  => $data['refresh_token'] ?? null,
+            'raw_data'       => $data['raw_data'] ?? null,
+        ]);
+
+        return redirect($homeUrl)->with('success', $label . '绑定成功');
+    }
+
+    /**
+     * 手机验证码绑定（绑定中心：已登录用户绑定手机号）
+     *
+     * 校验规则：
+     *   - 手机验证码登录功能需开启（复用短信配置）；
+     *   - 当前账号未绑定手机号；
+     *   - 目标手机号未被其他账号占用（手机号是登录凭据，全局唯一）。
+     */
+    public function bindPhone(Request $request): JsonResponse
+    {
+        $user = auth('web')->user();
+        if (!$user) {
+            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        }
+
+        if (! $this->settingService->isPhoneLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '手机验证码登录未启用，无法绑定手机号'], 400);
+        }
+
+        if ($user->phone) {
+            return response()->json(['code' => 400, 'message' => '已绑定手机号，请先解绑'], 400);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'required|string|regex:/^1\d{10}$/',
+            'code'  => 'required|string|size:6',
+        ], [
+            'phone.required' => '请输入手机号',
+            'phone.regex'    => '手机号格式不正确',
+            'code.required'  => '请输入验证码',
+            'code.size'      => '验证码必须是6位',
+        ]);
+
+        $phone = $validated['phone'];
+
+        // 手机号是登录凭据，必须全局唯一（未注册且未被其他账号绑定）
+        if (User::where('phone', $phone)->exists()) {
+            return response()->json(['code' => 422, 'message' => '该手机号已被其他账号使用'], 422);
+        }
+
+        $cachedCode = Cache::get(self::CACHE_PHONE_CODE_PREFIX . $phone);
+        if (! $cachedCode || ! hash_equals((string) $cachedCode, (string) $validated['code'])) {
+            return response()->json(['code' => 422, 'message' => '验证码不正确或已过期'], 422);
+        }
+
+        // 验证码一次性失效
+        Cache::forget(self::CACHE_PHONE_CODE_PREFIX . $phone);
+
+        $user->update(['phone' => $phone]);
+
+        return response()->json(['code' => 0, 'message' => '手机号绑定成功']);
+    }
+
+    /**
+     * 邮箱验证码绑定（绑定中心：已登录用户绑定邮箱）
+     *
+     * 校验规则：
+     *   - 邮箱验证码登录功能需开启（复用邮箱配置）；
+     *   - 当前账号未绑定邮箱；
+     *   - 目标邮箱未被其他账号占用（邮箱是登录凭据，全局唯一）。
+     */
+    public function bindEmail(Request $request): JsonResponse
+    {
+        $user = auth('web')->user();
+        if (!$user) {
+            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        }
+
+        if (! $this->settingService->isEmailLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '邮箱验证码登录未启用，无法绑定邮箱'], 400);
+        }
+
+        if ($user->email) {
+            return response()->json(['code' => 400, 'message' => '已绑定邮箱，请先解绑'], 400);
+        }
+
+        $validated = $request->validate([
+            'email' => 'required|string|email|max:100',
+            'code'  => 'required|string|size:6',
+        ], [
+            'email.required' => '请输入邮箱地址',
+            'email.email'    => '邮箱格式不正确',
+            'code.required'  => '请输入验证码',
+            'code.size'      => '验证码必须是6位',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+
+        // 邮箱是登录凭据，必须全局唯一（未注册且未被其他账号绑定）
+        if (User::where('email', $email)->exists()) {
+            return response()->json(['code' => 422, 'message' => '该邮箱已被其他账号使用'], 422);
+        }
+
+        $cachedCode = Cache::get(self::CACHE_EMAIL_CODE_PREFIX . $email);
+        if (! $cachedCode || ! hash_equals((string) $cachedCode, (string) $validated['code'])) {
+            return response()->json(['code' => 422, 'message' => '验证码不正确或已过期'], 422);
+        }
+
+        // 验证码一次性失效
+        Cache::forget(self::CACHE_EMAIL_CODE_PREFIX . $email);
+
+        $user->update(['email' => $email]);
+
+        return response()->json(['code' => 0, 'message' => '邮箱绑定成功']);
+    }
+
+    /**
+     * PC 扫码登录：轮询检查微信登录状态
      */
     public function wechatLoginStatus(Request $request): JsonResponse
     {
+        return $this->oauthLoginStatus($request, 'wechat');
+    }
+
+    /**
+     * PC 扫码登录：轮询检查 QQ 登录状态
+     */
+    public function qqLoginStatus(Request $request): JsonResponse
+    {
+        return $this->oauthLoginStatus($request, 'qq');
+    }
+
+    /**
+     * PC 扫码登录：轮询检查登录状态（微信/QQ 通用）
+     *
+     * PC 端弹出二维码后，前端轮询此接口。检测到登录结果后在 PC 端建立 session。
+     *
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    protected function oauthLoginStatus(Request $request, string $platform): JsonResponse
+    {
+        $label = $this->platformUserLabel($platform);
         $state = trim((string) $request->input('state', ''));
         if ($state === '') {
             return response()->json(['code' => 400, 'message' => '缺少 state'], 400);
@@ -614,7 +1372,7 @@ class AuthController extends Controller
             ]);
         }
 
-        // 新微信用户且开启邀请注册：返回 need_invite，PC 端弹窗收集邀请码后凭 token 提交。
+        // 新用户且开启邀请注册：返回 need_invite，PC 端弹窗收集邀请码后凭 token 提交。
         // 不清理结果 Cache，PC 端提交邀请码成功后直接跳转，过期前轮询可重复获得该状态。
         if (!empty($result['need_invite'])) {
             return response()->json([
@@ -647,7 +1405,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
-        $this->writeLoginLog($user->id, 'wechat', $request, 1, '微信扫码登录成功');
+        $this->writeLoginLog($user->id, $platform, $request, 1, $platform === 'qq' ? 'QQ扫码登录成功' : '微信扫码登录成功');
 
         return response()->json([
             'code'    => 0,
@@ -656,18 +1414,23 @@ class AuthController extends Controller
                 'logged_in' => true,
                 'is_new'    => $isNew,
                 'redirect'  => $isNew
-                    ? $this->completeUrl((string) $request->input('redirect', ''))
+                    ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
                     : $this->resolveRedirect($request),
             ],
         ]);
     }
 
     /**
-     * 原生模式：用 code 换 openid + 用户信息
+     * 原生模式：用 code 换 openid + 用户信息（微信/QQ 通用）
+     *
+     * @param string $code 授权 code
+     * @param string $platform 平台标识（wechat/qq）
      */
-    protected function resolveNativeOauthData(string $code): ?array
+    protected function resolveNativeOauthData(string $code, string $platform): ?array
     {
-        $openidService = app(WechatOauthService::class);
+        $openidService = $platform === 'qq'
+            ? app(QqOauthService::class)
+            : app(WechatOauthService::class);
         $result = $openidService->getOpenidByOauthCode($code);
 
         if (!$result['success'] || $result['openid'] === '') {
@@ -686,6 +1449,7 @@ class AuthController extends Controller
             'avatar'        => $userInfo['avatar'] ?? '',
             'access_token'  => $result['access_token'] ?? '',
             'refresh_token' => $result['refresh_token'] ?? '',
+            'platform'      => $platform,
             'raw_data'      => $userInfo ?: null,
         ];
     }
@@ -717,6 +1481,7 @@ class AuthController extends Controller
             'avatar'        => $userInfo['avatar'],
             'access_token'  => $accessToken,
             'refresh_token' => $refreshToken,
+            'platform'      => 'wechat',
             'raw_data'      => $userInfo,
         ];
     }
@@ -726,13 +1491,14 @@ class AuthController extends Controller
      *
      * @param Request $request
      * @param array $data 必须包含 openid，可选 unionid/nickname/avatar/access_token/refresh_token/raw_data
-     * @param string $inviteCode 微信登录携带的邀请码（可为空）
+     * @param string $inviteCode 社交登录携带的邀请码（可为空）
      * @param string $redirect 登录页携带的跳转地址（可为空，空时按请求参数解析）
+     * @param string $platform 平台标识（wechat/qq），默认 wechat
      */
-    protected function loginOrCreateUser(Request $request, array $data, string $inviteCode = '', string $redirect = '')
+    protected function loginOrCreateUser(Request $request, array $data, string $inviteCode = '', string $redirect = '', string $platform = 'wechat')
     {
         try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, $inviteCode);
+            [$user, $isNew] = $this->resolveOrCreateUser($data, $inviteCode, $platform);
         } catch (\RuntimeException $e) {
             // 建号失败（如邀请码消费失败）时未建立登录态，异常交由调用方处理
             throw $e;
@@ -742,22 +1508,25 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
-        $this->writeLoginLog($user->id, 'wechat', $request, 1, '微信登录成功');
+        $this->writeLoginLog($user->id, $platform, $request, 1, $platform === 'qq' ? 'QQ登录成功' : '微信登录成功');
 
-        // 首次微信登录需完善资料（手机号、昵称），跳转地址随 URL 继续透传
+        // 首次社交登录需完善资料（手机号、昵称），跳转地址随 URL 继续透传
         if ($isNew) {
-            return redirect($this->completeUrl($redirect));
+            return redirect($this->completeUrl($redirect, $platform));
         }
 
         return redirect($this->resolveRedirect($request, $redirect));
     }
 
     /**
-     * 根据微信 openid 查找已绑定的用户（不存在返回 null）
+     * 根据 openid 查找已绑定的用户（不存在返回 null）
+     *
+     * @param string $openid 第三方平台 openid
+     * @param string $platform 平台标识（wechat/qq），默认 wechat
      */
-    protected function findWechatUser(string $openid): ?User
+    protected function findOauthUser(string $openid, string $platform = 'wechat'): ?User
     {
-        $binding = UserThirdParty::where('platform', 'wechat')
+        $binding = UserThirdParty::where('platform', $platform)
             ->where('open_id', $openid)
             ->first();
 
@@ -772,11 +1541,11 @@ class AuthController extends Controller
     }
 
     /**
-     * 提交邀请码完成微信新用户注册
+     * 提交邀请码完成社交新用户注册（微信/QQ 通用）
      *
      * 适用于两种场景（邀请注册开启 + 授权确认是新用户后）：
      *   1. PC 扫码：PC 端轮询到 need_invite 后弹窗收集邀请码提交；
-     *   2. 微信内授权：回调 redirect 到 complete-invite 页面填写提交。
+     *   2. 端内授权：回调 redirect 到 complete-invite 页面填写提交。
      * 建号成功即建立登录态。
      */
     public function submitInvite(Request $request): JsonResponse
@@ -793,8 +1562,11 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新扫码登录'], 400);
         }
 
+        // 授权数据携带平台标识（resolveNativeOauthData/resolveProxyOauthData 写入）
+        $platform = (string) ($data['platform'] ?? 'wechat');
+
         try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, $validated['invite_code']);
+            [$user, $isNew] = $this->resolveOrCreateUser($data, $validated['invite_code'], $platform);
         } catch (\RuntimeException $e) {
             // 邀请码无效等：授权数据放回，允许用户重新填写
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $validated['token'], $data, self::LOGIN_STATE_TTL);
@@ -806,14 +1578,14 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
-        $this->writeLoginLog($user->id, 'wechat', $request, 1, '微信登录成功（邀请码注册）');
+        $this->writeLoginLog($user->id, $platform, $request, 1, $platform === 'qq' ? 'QQ登录成功（邀请码注册）' : '微信登录成功（邀请码注册）');
 
         return response()->json([
             'code'    => 0,
             'message' => '登录成功',
             'data'    => [
                 'redirect' => $isNew
-                    ? $this->completeUrl((string) $request->input('redirect', ''))
+                    ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
                     : $this->resolveRedirect($request),
             ],
         ]);
@@ -822,32 +1594,33 @@ class AuthController extends Controller
     /**
      * 解析或创建用户（不建立登录态，由调用方决定如何 login）
      *
-     * 邀请注册开启时，新微信用户建号需在事务内校验并消费邀请码；
+     * 邀请注册开启时，新用户建号需在事务内校验并消费邀请码；
      * 已绑定老用户登录不消费邀请码。
      *
      * @param array $data 必须包含 openid，可选 unionid/nickname/avatar/access_token/refresh_token/raw_data
-     * @param string $inviteCode 微信登录携带的邀请码（可为空；邀请注册模式下新用户必须有效）
+     * @param string $inviteCode 登录携带的邀请码（可为空；邀请注册模式下新用户必须有效）
+     * @param string $platform 平台标识（wechat/qq），默认 wechat
      * @return array [User, bool $isNew]
      * @throws \RuntimeException 邀请码缺失、无效或消费失败时抛出（未建号、未建立登录态）
      */
-    protected function resolveOrCreateUser(array $data, string $inviteCode = ''): array
+    protected function resolveOrCreateUser(array $data, string $inviteCode = '', string $platform = 'wechat'): array
     {
         $openid = $data['openid'];
         $unionid = $data['unionid'] ?? null;
 
         // 已绑定用户直接返回（调用方保证：邀请注册开启且为新用户时不会走到这里）
-        $existing = $this->findWechatUser($openid);
+        $existing = $this->findOauthUser($openid, $platform);
         if ($existing) {
             return [$existing, false];
         }
 
-        // 首次微信登录：创建用户并绑定
-        $nickname = $data['nickname'] !== '' ? $data['nickname'] : ('微信用户' . substr($openid, -4));
+        // 首次登录：创建用户并绑定
+        $nickname = $data['nickname'] !== '' ? $data['nickname'] : ($this->platformUserLabel($platform) . substr($openid, -4));
         $avatar = $data['avatar'] !== '' ? $data['avatar'] : null;
         $defaultGroup = UserGroup::default()->enabled()->first();
 
-        // 用户名：wx_ + openid 后10位，若冲突追加随机后缀保证唯一
-        $baseUsername = 'wx_' . substr($openid, -10);
+        // 用户名：{platform缩写}_ + openid 后10位，若冲突追加随机后缀保证唯一
+        $baseUsername = $this->platformPrefix($platform) . substr($openid, -10);
         $username = $baseUsername;
         $uniqueKey = md5($openid);
         while (User::where('username', $username)->exists()) {
@@ -856,17 +1629,17 @@ class AuthController extends Controller
         }
 
         // 设置一个随机的不可登录密码（保证非空，避免数据库中 password 字段无默认值报错）
-        $randomPassword = 'wx_' . bin2hex(random_bytes(16));
+        $randomPassword = $this->platformPrefix($platform) . '_' . bin2hex(random_bytes(16));
 
-        // 邀请注册开启时，新微信用户建号必须在事务内消费邀请码（失败则不建号）
+        // 邀请注册开启时，新用户建号必须在事务内消费邀请码（失败则不建号）
         $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
         $inviteCode = strtoupper(trim($inviteCode));
         if ($inviteRequired && $inviteCode === '') {
-            throw new \RuntimeException('本站开启邀请注册，微信登录需携带邀请码');
+            throw new \RuntimeException('本站开启邀请注册，' . $this->platformUserLabel($platform) . '登录需携带邀请码');
         }
 
         try {
-            $user = DB::transaction(function () use ($data, $openid, $unionid, $nickname, $avatar, $defaultGroup, $username, $randomPassword, $inviteRequired, $inviteCode) {
+            $user = DB::transaction(function () use ($data, $openid, $unionid, $nickname, $avatar, $defaultGroup, $username, $randomPassword, $inviteRequired, $inviteCode, $platform) {
                 $user = User::create([
                     'username' => $username,
                     'password' => Hash::make($randomPassword),
@@ -878,7 +1651,7 @@ class AuthController extends Controller
 
                 UserThirdParty::create([
                     'user_id'        => $user->id,
-                    'platform'       => 'wechat',
+                    'platform'       => $platform,
                     'open_id'        => $openid,
                     'union_id'       => $unionid,
                     'nickname'       => $data['nickname'] ?? null,
@@ -903,6 +1676,22 @@ class AuthController extends Controller
         }
 
         return [$user, true];
+    }
+
+    /**
+     * 平台缩写前缀（用于生成用户名/随机密码前缀）
+     */
+    protected function platformPrefix(string $platform): string
+    {
+        return $platform === 'qq' ? 'qq' : 'wx';
+    }
+
+    /**
+     * 平台中文标签
+     */
+    protected function platformUserLabel(string $platform): string
+    {
+        return $platform === 'qq' ? 'QQ用户' : '微信用户';
     }
 
     /**
@@ -1026,10 +1815,13 @@ class AuthController extends Controller
 
     /**
      * 首次登录完善资料页地址（携带跳转地址继续透传）
+     *
+     * @param string $redirect 跳转地址
+     * @param string $platform 平台标识（wechat/qq），默认 wechat
      */
-    protected function completeUrl(string $redirect = ''): string
+    protected function completeUrl(string $redirect = '', string $platform = 'wechat'): string
     {
-        $url = ShareService::frontUrl('/auth/wechat/complete');
+        $url = ShareService::frontUrl('/auth/' . $platform . '/complete');
         if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
             $url .= '?redirect=' . urlencode($redirect);
         }

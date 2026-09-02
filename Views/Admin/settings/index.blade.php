@@ -25,7 +25,9 @@
                 <ul class="layui-tab-title">
                     <li class="layui-this"><i class="fa fa-globe"></i> 访问设置</li>
                     <li><i class="fa fa-user-plus"></i> 邀请注册</li>
+                    <li><i class="fa fa-envelope"></i> 邮箱验证</li>
                     <li><i class="fa fa-weixin"></i> 微信设置</li>
+                    <li><i class="fa fa-qq"></i> QQ设置</li>
                     <li><i class="fa fa-mobile"></i> 手机登录</li>
                 </ul>
                 <div class="layui-tab-content settings-tab-content">
@@ -155,6 +157,28 @@
                             </div>
                         </div>
 
+                        {{-- 邮箱验证 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">邮箱验证码登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="email_login_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['email_login_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示邮箱验证码登录入口（需系统已配置 SMTP 邮箱）</div>
+                                </div>
+                            </div>
+                            @if(!(mail_configured()))
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                        系统尚未配置 SMTP 邮箱，验证码邮件无法发送。请前往「系统设置 → 邮件设置」完成 SMTP 配置后再开启本功能。
+                                    </div>
+                                </div>
+                            </div>
+                            @endif
+                        </div>
+
                         {{-- 微信设置 Tab --}}
                         <div class="layui-tab-item">
                             <div class="layui-form-item">
@@ -198,6 +222,57 @@
                                         部署 <code>wechat_oauth.php</code> 的完整访问地址（参考 <code>https://gitee.com/holley/wechat_oauth</code>）。<br>
                                         <strong>使用场景：</strong>公众号「网页授权域名」绑定数量受限时，将外挂脚本部署到已绑定域名下，多个站点共用同一授权入口。<br>
                                         <strong>登录对接：</strong>开启后，用户在微信内点击「微信登录」时跳转到 <code>{外挂地址}?action=authorize&type=userinfo&return_url={统一登录回调地址}&state={state}</code>，外挂脚本完成授权后跳回统一登录回调地址 <code>/auth/wechat/callback</code> 并附带 <code>openid</code>、<code>state</code> 参数，获取昵称头像用于首次登录创建用户。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- QQ设置 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用QQ登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="qq_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['qq_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示QQ登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">功能选项</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                        <select name="qq_mode" id="qq_mode">
+                                            <option value="qrcode" {{ ($configs['qq_mode'] ?? 'web') === 'qrcode' ? 'selected' : '' }}>QQ扫码登录</option>
+                                            <option value="web" {{ ($configs['qq_mode'] ?? 'web') === 'web' ? 'selected' : '' }}>QQ网页登录</option>
+                                        </select>
+                                    </div>
+                                    <div class="layui-form-mid layui-word-aux">QQ扫码登录：PC 端展示二维码，需使用QQ手机版扫一扫登录；QQ网页登录（默认）：跳转 QQ互联 OAuth2.0 认证页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">QQ互联 AppID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="qq_app_id" value="{{ $configs['qq_app_id'] ?? '' }}"
+                                           placeholder="101xxxxxx" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的应用 AppID，用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">QQ互联 AppKey</label>
+                                <div class="layui-input-block">
+                                    <input type="password" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
+                                           placeholder="请输入 AppKey" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在 QQ互联开放平台「网站应用」中，将授权回调域配置为当前系统的回调地址。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/qq/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/qq/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>QQ 授权成功后需完善资料并绑定邀请码，与微信登录流程一致。
                                     </div>
                                 </div>
                             </div>
@@ -404,7 +479,7 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     toggleSmsProviderFields($('#sms_provider').val());
 
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
-    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'invite_enabled'];
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled'];
 
     $('#save-settings').on('click', function() {
         var formData = {};

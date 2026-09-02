@@ -1,7 +1,7 @@
 # CmsPro 统一登录扩展指南
 
-> 版本：1.1.0 | 更新日期：2026-08-25
-> 适用应用：CmsproSso v1.3.0+
+> 版本：1.2.1 | 更新日期：2026-09-02
+> 适用应用：CmsproSso v1.5.4+
 
 ---
 
@@ -17,6 +17,7 @@
 
 1. 应用已安装并启用（`apps` 表 `cmspro.sso` 记录 status=1）
 2. 如需微信登录，后台「微信设置」已配置 AppID/AppSecret
+3. 如需 QQ 登录，后台「QQ登录设置」已配置 AppID/AppKey 并启用（功能选项支持「QQ扫码登录」「QQ网页登录」两种模式）
 
 ```php
 // 检查应用是否启用
@@ -47,13 +48,14 @@ $enabled = $app && $app->status->value === 1;
 | `getWechatOauthUrl()` | - | string | 获取外挂地址 |
 | `getDefaultRedirect()` | - | string | 获取登录默认跳转地址 |
 | `isPhoneLoginEnabled()` | - | bool | 是否启用手机验证码登录 |
+| `isEmailLoginEnabled()` | - | bool | 是否启用邮箱验证码登录（开关开启且系统已配置 SMTP 才返回 true） |
 | `getSmsProvider()` | - | string | 获取当前短信服务商（aliyun/tencent/volcengine） |
 
 **ShareService**（静态方法）
 
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
-| `frontUrl(string $path)` | 前台路径 | string | 生成前台页面 URL（path/domain 双模式） |
+| `frontUrl(string $path)` | 前台路径 | string | 生成前台页面 URL（path/domain 双模式）。path 模式下若当前请求位于绑定的子域名（如论坛 `bbs.example.com`），自动返回主域名下的绝对 URL（基于 `config('app.url')`），避免跳转到子域名下不存在的 `/sso` 路径
 
 **SmsService**
 
@@ -68,7 +70,16 @@ $enabled = $app && $app->status->value === 1;
 |------|------|--------|------|
 | `buildOauthRedirectUrl(string $redirectUri, string $state = '')` | 回调地址、state | array | 生成微信授权跳转链接 |
 | `getOpenidByOauthCode(string $code)` | 授权 code | array | code 换 openid/unionid/access_token |
-| `getUserInfoByToken(string $accessToken, string $openid)` | token、openid | array | 获取昵称/头像 |
+| `getUserInfoByToken(string $accessToken, string $openid)` | token、openid | array |计算取昵称/头像 |
+
+**QqOauthService**
+
+| 方法 | 参数 |返回值 |说明 |
+|------|------|--------|------|
+| `buildOauthRedirectUrl(string $redirectUri, string $state = '')` | 回调地址、state | array |生成 QQ 互联授权跳转链接 |
+| `getOpenidByOauthCode(string $code)` | 授权 code | array |code 换 access_token/openid |
+| `getUserInfoByToken(string $accessToken, string $openid)` | token、openid | array |获取昵称/头像 |
+| `redirectUri()` | - | string |计算取 QQ 授权回调地址（`ShareService::frontUrl('/auth/qq/callback')`） |
 
 ### 3.3 调用示例
 
@@ -143,13 +154,19 @@ if ($smsService->isConfigured()) {
 6. **短信未配置**：调用 `SmsService::sendVerificationCode()` 前应先通过 `SmsService::isConfigured()` 检查，未配置时返回友好提示。
 7. **开放重定向防护**：登录跳转地址通过 `isSafeRedirect()` 校验，仅允许站内相对路径或同域绝对地址。
 8. **短信凭证安全**：短信服务商的 SecretKey 等敏感配置以密文存储，仅平台后台可见，应用内部不得打印日志。
+9. **绑定与登录 state 隔离**：绑定授权 state 存 session 键 `cmspro_sso_{platform}_bind_oauth_state`，登录 state 存 `cmspro_sso_{platform}_oauth_state`（PC 扫码存 Cache `cmspro_sso_login_state:`）。两者共用回调地址，回调按 state 校验位置区分模式，禁止混用。
+10. **解绑保护**：解绑前须统计可登录方式（密码/手机/微信/QQ），解绑后为 0 时拒绝（防账号锁死）。平台随机密码以 `phone_`/`wx_`/`qq_` 前缀存储，不可登录，不计入统计。
 
 ## 八、版本与更新日志
 
 | 版本 | 日期 | 更新人 | 说明 |
 |------|------|--------|------|
+| 1.8.1 | 2026-09-02|开发团队 |修复 path 模式下 `frontUrl()` 跨子域名跳转：当前请求位于绑定的子域名（如论坛 `bbs.example.com`）时，自动返回主域名下的绝对 URL（基于 `config('app.url')`），避免跳转到子域名下不存在的 `/sso` 路径 |
 | 1.0.0 | 2026-08-13 | 开发团队 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问 |
 | 1.1.0 | 2026-08-13 | 开发团队 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
 | 1.1.1 | 2026-08-13 | 开发团队 | 修复子域名模式：根路径 `/` 跳转登录页；覆盖系统重定向到子域名 |
 | 1.2.1 | 2026-08-25 | 开发团队 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页 |
-| 1.3.0 | 2026-08-25 | 开发团队 | 新增手机验证码登录：`SmsService` 门面 + 阿里云/腾讯云/火山引擎三个发送器，验证码限频/有效期/一次性失效，未注册手机号自动建号 |
+| 1.3.0 | 2026-08-25 |开发团队 |新增手机验证码登录：`SmsService` 门面 + 阿里云/腾讯云/火山引擎三个发送器，验证码限频/有效期/一次性失效，未注册手机号自动建号 |
+| 1.6.0 | 2026-09-02 |开发团队 |新增 QQ 互联登录：`QqOauthService`（授权 URL 构建 / code 换 openid / 用户信息获取）+ `isQqConfigured()` 配置判断；后台新增「功能选项」（QQ扫码登录 / QQ网页登录，默认网页登录），前端按模式分流 |
+| 1.7.0 | 2026-09-02 |开发团队 |新增账号绑定中心：`bindings()` 绑定状态查询、`oauthBindUrl()` 绑定授权链接（state 存 session 绑定专用键 `cmspro_sso_{platform}_bind_oauth_state`）、`bindOauthCallback()` 回调绑定落库（openid 冲突检测）、`bindPhone()` 短信验证码绑定、`unbind()` 解绑保护（统计密码/手机/微信/QQ 可登录方式，仅剩一种拒绝解绑；`userCanPasswordLogin()` 通过密码前缀 `phone_`/`wx_`/`qq_` 识别平台随机密码） |
+| 1.8.0 | 2026-09-02 |开发团队 |新增邮箱验证码登录：`SettingService::isEmailLoginEnabled()`（开关 + `mail_configured()` 双重判断）、`sendEmailCode()`（复用系统注册验证码缓存键与邮件模板，RateLimiter 每分钟每邮箱 3 次）、`emailLogin()`（验证码一次性失效，未注册邮箱事务内建号）、`createEmailUser()`（用户名取邮箱 @ 前缀，冲突加随机后缀） |

@@ -1,6 +1,13 @@
 @extends('cmspro.sso::layouts.home')
 
-@php $result = request()->query('result'); $pcFailed = $result === 'failed'; $pcInvite = $result === 'invite'; @endphp
+@php
+    $result = request()->query('result');
+    $pcFailed = $result === 'failed';
+    $pcInvite = $result === 'invite';
+    // 平台标识（wechat/qq），用于提示文案；由访问路径区分
+    $platform = str_contains(request()->path(), 'qq') ? 'qq' : 'wechat';
+    $label = $platform === 'qq' ? 'QQ' : '微信';
+@endphp
 
 @section('title', $pcFailed ? '登录失败' : ($pcInvite ? '需要邀请码' : '扫码登录成功'))
 
@@ -32,7 +39,7 @@
     </p>
     @endif
     <div class="sso-tip" id="close-fallback" style="display: none;">
-        若本页面未自动关闭，请手动返回微信。
+        若本页面未自动关闭，请手动返回{{ $label }}。
         <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/home') }}" style="color: #2563eb;">在手机上继续访问</a>
     </div>
 </div>

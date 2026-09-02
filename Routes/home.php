@@ -22,13 +22,19 @@ Route::get('/forgot-password', [AuthController::class, 'forgotPasswordForm']);
 Route::get('/invite/buy', [InviteController::class, 'buyForm']);
 // 微信新用户邀请码填写页（邀请注册开启时，微信内授权回调发现新用户后跳转）
 Route::get('/auth/wechat/complete-invite', [AuthController::class, 'completeInviteForm']);
+// QQ 新用户邀请码填写页（邀请注册开启时，QQ 授权回调发现新用户后跳转）
+Route::get('/auth/qq/complete-invite', [AuthController::class, 'completeInviteForm']);
 
 // 微信授权回调（公开访问，微信服务器回调）
 Route::get('/auth/wechat/callback', [AuthController::class, 'wechatCallback']);
+// QQ 授权回调（公开访问，QQ 服务器回调）
+Route::get('/auth/qq/callback', [AuthController::class, 'qqCallback']);
 // PC 扫码登录成功提示页
 Route::get('/auth/wechat/pc-success', [AuthController::class, 'pcSuccessForm']);
-// 首次微信登录完善资料页
+Route::get('/auth/qq/pc-success', [AuthController::class, 'pcSuccessForm']);
+// 首次社交登录完善资料页
 Route::get('/auth/wechat/complete', [AuthController::class, 'completeForm']);
+Route::get('/auth/qq/complete', [AuthController::class, 'completeForm']);
 
 // 需登录的前台页面（受统一登录认证中间件保护）
 Route::middleware('cmspro.sso.auth')->group(function () {

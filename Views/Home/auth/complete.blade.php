@@ -1,12 +1,14 @@
 @extends('cmspro.sso::layouts.home')
 
+@php $platform = $platform ?? 'wechat'; $label = $platform === 'qq' ? 'QQ' : '微信'; @endphp
+
 @section('title', '完善资料')
 
 @section('content')
 <div class="sso-card">
     <div class="sso-card-title">完善资料</div>
     <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
-        首次微信登录，请完善以下信息
+        首次{{ $label }}登录，请完善以下信息
     </p>
 
     <form class="layui-form" lay-filter="complete-form">
@@ -39,6 +41,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
         headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
     });
 
+    // 平台标识（wechat/qq），决定完善资料调用的接口
+    var platform = @json($platform);
+    // 登录页携带的跳转地址（完善资料成功后继续透传）
+    var redirect = @json($redirect ?? '');
+
     // 回车提交完善资料表单
     $('form[lay-filter="complete-form"]').on('keydown', function(e){
         if (e.key === 'Enter') {
@@ -50,7 +57,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
     form.on('submit(complete-submit)', function(data){
         var loadIdx = layer.load(2);
         $.ajax({
-            url: window.SSO_API_BASE + '/auth/wechat/complete',
+            url: window.SSO_API_BASE + '/auth/' + platform + '/complete',
             type: 'POST',
             data: $.extend({}, data.field, { redirect: redirect }),
             success: function(res){

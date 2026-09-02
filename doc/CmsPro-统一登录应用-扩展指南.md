@@ -154,7 +154,7 @@ if ($smsService->isConfigured()) {
 6. **短信未配置**：调用 `SmsService::sendVerificationCode()` 前应先通过 `SmsService::isConfigured()` 检查，未配置时返回友好提示。
 7. **开放重定向防护**：登录跳转地址通过 `isSafeRedirect()` 校验，仅允许站内相对路径或同域绝对地址。
 8. **短信凭证安全**：短信服务商的 SecretKey 等敏感配置以密文存储，仅平台后台可见，应用内部不得打印日志。
-9. **绑定与登录 state 隔离**：绑定授权 state 存 session 键 `cmspro_sso_{platform}_bind_oauth_state`，登录 state 存 `cmspro_sso_{platform}_oauth_state`（PC 扫码存 Cache `cmspro_sso_login_state:`）。两者共用回调地址，回调按 state 校验位置区分模式，禁止混用。
+9. **绑定与登录 state 隔离**：绑定授权 state 存 session 键 `cmspro_sso_{platform}_bind_oauth_state`（PC 扫码绑定存 Cache `cmspro_sso_bind_state:`，含目标用户 id，回调据此落库），登录 state 存 `cmspro_sso_{platform}_oauth_state`（PC 扫码存 Cache `cmspro_sso_login_state:`）；绑定结果轮询走 Cache `cmspro_sso_bind_result:`。三者共用回调地址，回调按 state 校验位置区分模式，禁止混用。
 10. **解绑保护**：解绑前须统计可登录方式（密码/手机/微信/QQ），解绑后为 0 时拒绝（防账号锁死）。平台随机密码以 `phone_`/`wx_`/`qq_` 前缀存储，不可登录，不计入统计。
 
 ## 八、版本与更新日志
@@ -170,3 +170,4 @@ if ($smsService->isConfigured()) {
 | 1.6.0 | 2026-09-02 |开发团队 |新增 QQ 互联登录：`QqOauthService`（授权 URL 构建 / code 换 openid / 用户信息获取）+ `isQqConfigured()` 配置判断；后台新增「功能选项」（QQ扫码登录 / QQ网页登录，默认网页登录），前端按模式分流 |
 | 1.7.0 | 2026-09-02 |开发团队 |新增账号绑定中心：`bindings()` 绑定状态查询、`oauthBindUrl()` 绑定授权链接（state 存 session 绑定专用键 `cmspro_sso_{platform}_bind_oauth_state`）、`bindOauthCallback()` 回调绑定落库（openid 冲突检测）、`bindPhone()` 短信验证码绑定、`unbind()` 解绑保护（统计密码/手机/微信/QQ 可登录方式，仅剩一种拒绝解绑；`userCanPasswordLogin()` 通过密码前缀 `phone_`/`wx_`/`qq_` 识别平台随机密码） |
 | 1.8.0 | 2026-09-02 |开发团队 |新增邮箱验证码登录：`SettingService::isEmailLoginEnabled()`（开关 + `mail_configured()` 双重判断）、`sendEmailCode()`（复用系统注册验证码缓存键与邮件模板，RateLimiter 每分钟每邮箱 3 次）、`emailLogin()`（验证码一次性失效，未注册邮箱事务内建号）、`createEmailUser()`（用户名取邮箱 @ 前缀，冲突加随机后缀） |
+| 1.9.0 | 2026-09-02 |开发团队 |绑定中心微信/QQ 支持 PC 扫码绑定：`oauthBindUrl()` 支持 `device=pc`（state 存 Cache 绑定键 `cmspro_sso_bind_state:` 含目标用户 id）、`bindPcOauthCallback()` 跨设备回调落库（绑定目标取自 Cache，不依赖回调请求自身登录态）、`oauthBindStatus()` 轮询绑定结果（`cmspro_sso_bind_result:`，成功 `bound`/失败 `error`） |

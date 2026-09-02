@@ -203,24 +203,14 @@
             background: #12b7f5;
             color: #fff;
         }
+        /* 真实 QQ 企鹅图标（内联 SVG，本地化） */
         .sso-qq-icon {
             width: 20px;
             height: 20px;
             display: inline-block;
-            border-radius: 50%;
-            background: #12b7f5;
-            position: relative;
+            background: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2048%2048%27%3E%3Ccircle%20cx=%2724%27%20cy=%2712%27%20r=%2710%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2728%27%20rx=%279%27%20ry=%2712%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2728%27%20rx=%275.5%27%20ry=%277.5%27%20fill=%27%23ffffff%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2712%27%20rx=%277%27%20ry=%276.5%27%20fill=%27%23ffffff%27/%3E%3Ccircle%20cx=%2720.5%27%20cy=%2710.5%27%20r=%272.2%27%20fill=%27%230b0b0b%27/%3E%3Ccircle%20cx=%2727.5%27%20cy=%2710.5%27%20r=%272.2%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2716%27%20rx=%272.6%27%20ry=%271.8%27%20fill=%27%23ffb400%27/%3E%3Cpath%20d=%27M15%2020c3%202%206.2%203%209%203s6-1%209-3l-2.2%205.5H17.2z%27%20fill=%27%2312b7f5%27/%3E%3Cpath%20d=%27M19.5%2043l-3.2%203c-1%20.9%201%202%202%201l5.5-3c.7-.4%201.6-.4%202.4%200l5.5%203c1%20.9%203-.1%202-1l-3.2-3z%27%20fill=%27%23ff9d00%27/%3E%3C/svg%3E") no-repeat center / contain;
         }
-        .sso-qq-btn:hover .sso-qq-icon { background: #fff; }
-        .sso-qq-icon::before,
-        .sso-qq-icon::after {
-            content: '';
-            position: absolute;
-            border-radius: 50%;
-            background: #fff;
-        }
-        .sso-qq-btn:hover .sso-qq-icon::before,
-        .sso-qq-btn:hover .sso-qq-icon::after { background: #12b7f5; }
+        .sso-qq-btn:hover .sso-qq-icon { filter: brightness(0) invert(1); }
         .sso-email-btn {
             flex: 1;
             height: 44px;
@@ -241,20 +231,6 @@
             color: #fff;
         }
         .sso-email-btn i { font-size: 20px; }
-        /* 企鹅造型：头部圆 + 左右翼 */
-        .sso-qq-icon::before {
-            width: 10px;
-            height: 13px;
-            top: 2px;
-            left: 5px;
-        }
-        .sso-qq-icon::after {
-            width: 14px;
-            height: 5px;
-            top: 13px;
-            left: 3px;
-            border-radius: 0 0 7px 7px;
-        }
         .sso-link-row {
             display: flex;
             justify-content: space-between;

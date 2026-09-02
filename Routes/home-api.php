@@ -47,7 +47,9 @@ Route::middleware('cmspro.sso.auth')->group(function () {
     // 绑定中心（微信/QQ 授权绑定、手机验证码绑定、解绑）
     Route::get('/user/bindings', [AuthController::class, 'bindings']);
     Route::get('/auth/wechat/bind-url', [AuthController::class, 'wechatBindUrl']);
+    Route::get('/auth/wechat/bind-status', [AuthController::class, 'wechatBindStatus']);
     Route::get('/auth/qq/bind-url', [AuthController::class, 'qqBindUrl']);
+    Route::get('/auth/qq/bind-status', [AuthController::class, 'qqBindStatus']);
     Route::post('/user/bind/phone', [AuthController::class, 'bindPhone']);
     Route::post('/user/bind/email', [AuthController::class, 'bindEmail']);
     Route::post('/user/unbind/{platform}', [AuthController::class, 'unbind']);

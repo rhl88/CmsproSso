@@ -5,144 +5,146 @@
 
 > 本文档系统整理 CmsPro v5 应用开发框架的全部应用特性，并标注本应用中的对应实现位置，作为应用开发的官方参考。
 
----
+***
 
 ## 一、应用体系架构
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 1 | 目录隔离 | 应用代码统一存放在 `app/Apps/CmsproSso/` 下 | `app/Apps/CmsproSso/` |
-| 2 | 命名空间隔离 | 命名空间为 `App\Apps\CmsproSso` | `App\Apps\CmsproSso\*` |
-| 3 | 数据库隔离 | 应用表统一以 `app_cmspro_sso_` 为前缀 | `app_cmspro_sso_login_logs` |
-| 4 | 视图隔离 | 视图命名空间为 `cmspro.sso::` | `cmspro.sso::Admin.*` / `cmspro.sso::Home.*` |
-| 5 | 配置隔离 | 配置项 code 以 `app_cmspro_sso_` 为前缀 | `Config/sso.php` / `config_items` |
-| 6 | manifest.json | 应用元数据唯一声明源 | `manifest.json` |
+| # | 特性            | 说明                                | 实现位置                                         |
+| - | ------------- | --------------------------------- | -------------------------------------------- |
+| 1 | 目录隔离          | 应用代码统一存放在 `app/Apps/CmsproSso/` 下 | `app/Apps/CmsproSso/`                        |
+| 2 | 命名空间隔离        | 命名空间为 `App\Apps\CmsproSso`        | `App\Apps\CmsproSso\*`                       |
+| 3 | 数据库隔离         | 应用表统一以 `app_cmspro_sso_` 为前缀      | `app_cmspro_sso_login_logs`                  |
+| 4 | 视图隔离          | 视图命名空间为 `cmspro.sso::`            | `cmspro.sso::Admin.*` / `cmspro.sso::Home.*` |
+| 5 | 配置隔离          | 配置项 code 以 `app_cmspro_sso_` 为前缀  | `Config/sso.php` / `config_items`            |
+| 6 | manifest.json | 应用元数据唯一声明源                        | `manifest.json`                              |
 
 ## 二、三终端全覆盖
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 7 | 后台管理端（admin） | 中间件 `['web','auth:admin']`，提供登录设置页 | `Routes/admin.php` / `Controllers/Admin/SettingController.php` |
-| 8 | 前端展示端（home） | 中间件 `['web']`，无认证，提供登录/注册/微信回调等页面 | `Routes/home.php` / `Controllers/Home/AuthController.php` |
+| # | 特性               | 说明                                            | 实现位置                                                             |
+| - | ---------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| 7 | 后台管理端（admin）     | 中间件 `['web','auth:admin']`，提供登录设置页            | `Routes/admin.php` / `Controllers/Admin/SettingController.php`   |
+| 8 | 前端展示端（home）      | 中间件 `['web']`，无认证，提供登录/注册/微信回调等页面             | `Routes/home.php` / `Controllers/Home/AuthController.php`        |
 | 9 | 前端 API（home-api） | 中间件 `['web','throttle:60,1']`，提供登录/注册/微信登录等接口 | `Routes/home-api.php` / `Controllers/HomeApi/AuthController.php` |
 
 > 说明：本应用为统一登录应用，不涉及用户中心端（user）终端。
 
 ## 三、路由系统
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 10 | 后台路由前缀 | `admin/cmspro/sso`，`auth:admin` 保护 | `ServiceProvider::registerRoutes()` |
-| 11 | 前台双模式路由 | 根据 `access_mode` 动态注册 path（`Route::prefix`）或 domain（`Route::domain`） | `ServiceProvider::registerHomeRoutes()` |
-| 12 | 根路径首页 | 访问根路径 `/` 时，已登录停留首页，未登录重定向到 `/login` | `Routes/home.php` |
-| 12.1 | 找回密码页路由 | `/forgot-password` 公开访问，未配置系统邮箱时重定向登录页 | `Routes/home.php` / `Controllers/Home/AuthController.php` |
-| 13 | 前台 API 全局前缀 | API 始终为 `api/cmspro/sso`，不随访问模式变化 | `ServiceProvider::registerHomeRoutes()` |
-| 14 | 前台认证中间件 | 自定义 `cmspro.sso.auth` 中间件，未登录跳转统一登录页 | `Middleware/FrontAuthMiddleware.php` |
-| 15 | 路由命名 | 后台设置页命名 `admin.cmspro.sso.setting` | `Routes/admin.php` |
-| 16 | 覆盖系统登录中间件 | 开启「覆盖系统」后，`/user/login`、`/user/register` 重定向到本应用登录/注册页 | `Middleware/OverrideSystemAuthMiddleware.php` |
+| #    | 特性          | 说明                                                                   | 实现位置                                                      |
+| ---- | ----------- | -------------------------------------------------------------------- | --------------------------------------------------------- |
+| 10   | 后台路由前缀      | `admin/cmspro/sso`，`auth:admin` 保护                                   | `ServiceProvider::registerRoutes()`                       |
+| 11   | 前台双模式路由     | 根据 `access_mode` 动态注册 path（`Route::prefix`）或 domain（`Route::domain`） | `ServiceProvider::registerHomeRoutes()`                   |
+| 12   | 根路径首页       | 访问根路径 `/` 时，已登录停留首页，未登录重定向到 `/login`                                 | `Routes/home.php`                                         |
+| 12.1 | 找回密码页路由     | `/forgot-password` 公开访问，未配置系统邮箱时重定向登录页                               | `Routes/home.php` / `Controllers/Home/AuthController.php` |
+| 13   | 前台 API 全局前缀 | API 始终为 `api/cmspro/sso`，不随访问模式变化                                    | `ServiceProvider::registerHomeRoutes()`                   |
+| 14   | 前台认证中间件     | 自定义 `cmspro.sso.auth` 中间件，未登录跳转统一登录页                                 | `Middleware/FrontAuthMiddleware.php`                      |
+| 15   | 路由命名        | 后台设置页命名 `admin.cmspro.sso.setting`                                   | `Routes/admin.php`                                        |
+| 16   | 覆盖系统登录中间件   | 开启「覆盖系统」后，`/user/login`、`/user/register` 重定向到本应用登录/注册页               | `Middleware/OverrideSystemAuthMiddleware.php`             |
 
 ## 四、数据层
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 15 | 登录日志表 | `app_cmspro_sso_login_logs`，记录登录方式/IP/UA/状态 | `Migrations/2026_08_13_000001_*.php` |
-| 16 | 模型 | `LoginLog` 模型，`create_time/update_time` 时间字段 | `Models/LoginLog.php` |
-| 17 | 复用系统用户模型 | 使用系统 `App\Models\User`、`UserGroup`、`UserThirdParty` | `Controllers/HomeApi/AuthController.php` |
-| 18 | 迁移幂等性 | `up()` 使用 `Schema::hasTable()` 检查，`down()` 使用 `dropIfExists()` | `Migrations/*.php` |
-| 19 | 表/字段备注 | 所有字段 `->comment()`，表 `ALTER TABLE ... COMMENT` | `Migrations/*.php` |
+| #  | 特性       | 说明                                                             | 实现位置                                     |
+| -- | -------- | -------------------------------------------------------------- | ---------------------------------------- |
+| 15 | 登录日志表    | `app_cmspro_sso_login_logs`，记录登录方式/IP/UA/状态                    | `Migrations/2026_08_13_000001_*.php`     |
+| 16 | 模型       | `LoginLog` 模型，`create_time/update_time` 时间字段                   | `Models/LoginLog.php`                    |
+| 17 | 复用系统用户模型 | 使用系统 `App\Models\User`、`UserGroup`、`UserThirdParty`            | `Controllers/HomeApi/AuthController.php` |
+| 18 | 迁移幂等性    | `up()` 使用 `Schema::hasTable()` 检查，`down()` 使用 `dropIfExists()` | `Migrations/*.php`                       |
+| 19 | 表/字段备注   | 所有字段 `->comment()`，表 `ALTER TABLE ... COMMENT`                 | `Migrations/*.php`                       |
 
 ## 五、钩子系统
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
+| #  | 特性     | 说明                        | 实现位置        |
+| -- | ------ | ------------------------- | ----------- |
 | 20 | 钩子注册入口 | `Hooks::register()` 预留扩展点 | `Hooks.php` |
-| 21 | 自定义钩子点 | 当前预留（未注册具体钩子），供后续扩展登录流程 | `Hooks.php` |
+| 21 | 自定义钩子点 | 当前预留（未注册具体钩子），供后续扩展登录流程   | `Hooks.php` |
 
 ## 六、配置系统
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 22 | 配置组声明 | `access_settings` / `wechat_settings` / `qq_settings` / `login_settings` / `phone_settings` / `email_settings` / `invite_settings` 七组 | `manifest.json` |
-| 23 | 配置三向同步 | `seedDefaultConfigs()` 以 manifest 为基准同步 | `Install.php` |
-| 24 | 配置读取服务 | `SettingService::get()` 从 `config_items` 读取，回退默认值 | `Services/SettingService.php` |
-| 25 | 配置白名单 | `ALLOWED_KEYS` 白名单，防止篡改其他配置 | `Services/SettingService.php` |
-| 26 | 配置保存 | `SettingController::update()` 白名单接收 + 清缓存 | `Controllers/Admin/SettingController.php` |
+| #  | 特性     | 说明                                                                                                                                    | 实现位置                                      |
+| -- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| 22 | 配置组声明  | `access_settings` / `wechat_settings` / `qq_settings` / `login_settings` / `phone_settings` / `email_settings` / `invite_settings` 七组 | `manifest.json`                           |
+| 23 | 配置三向同步 | `seedDefaultConfigs()` 以 manifest 为基准同步                                                                                               | `Install.php`                             |
+| 24 | 配置读取服务 | `SettingService::get()` 从 `config_items` 读取，回退默认值                                                                                     | `Services/SettingService.php`             |
+| 25 | 配置白名单  | `ALLOWED_KEYS` 白名单，防止篡改其他配置                                                                                                           | `Services/SettingService.php`             |
+| 26 | 配置保存   | `SettingController::update()` 白名单接收 + 清缓存                                                                                             | `Controllers/Admin/SettingController.php` |
 
 ## 六-1、短信服务
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 26.1 | 短信门面 | `SmsService` 按 `sms_provider` 调度发送器，`isConfigured()` 校验凭证完整性 | `Services/SmsService.php` |
-| 26.2 | 阿里云发送器 | AccessKey 签名 + Dysmsapi 接口，模板变量名 `code` | `Services/Sms/AliyunSmsSender.php` |
-| 26.3 | 腾讯云发送器 | SecretId/SecretKey 签名 + Sms 接口（SDKAppID 验证码模板） | `Services/Sms/TencentSmsSender.php` |
-| 26.4 | 火山引擎发送器 | AccessKey 签名 + 短信消息组接口（SmsAccount） | `Services/Sms/VolcengineSmsSender.php` |
-| 26.5 | 验证码限频 | `RateLimiter` 60 秒/次，5 分钟有效，一次性失效 | `Controllers/HomeApi/AuthController.php` |
-| 26.6 | 未注册自动建号 | 手机号不存在时自动创建用户（用户名取手机号，随机密码不可登录） | `Controllers/HomeApi/AuthController.php::createPhoneUser()` |
+| #    | 特性      | 说明                                                           | 实现位置                                                        |
+| ---- | ------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
+| 26.1 | 短信门面    | `SmsService` 按 `sms_provider` 调度发送器，`isConfigured()` 校验凭证完整性 | `Services/SmsService.php`                                   |
+| 26.2 | 阿里云发送器  | AccessKey 签名 + Dysmsapi 接口，模板变量名 `code`                      | `Services/Sms/AliyunSmsSender.php`                          |
+| 26.3 | 腾讯云发送器  | SecretId/SecretKey 签名 + Sms 接口（SDKAppID 验证码模板）               | `Services/Sms/TencentSmsSender.php`                         |
+| 26.4 | 火山引擎发送器 | AccessKey 签名 + 短信消息组接口（SmsAccount）                           | `Services/Sms/VolcengineSmsSender.php`                      |
+| 26.5 | 验证码限频   | `RateLimiter` 60 秒/次，5 分钟有效，一次性失效                            | `Controllers/HomeApi/AuthController.php`                    |
+| 26.6 | 未注册自动建号 | 手机号不存在时自动创建用户（用户名取手机号，随机密码不可登录）                              | `Controllers/HomeApi/AuthController.php::createPhoneUser()` |
 
 ## 七、权限系统
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
+| #  | 特性   | 说明                                                     | 实现位置            |
+| -- | ---- | ------------------------------------------------------ | --------------- |
 | 27 | 权限声明 | `cmspro.sso.manage`（统一登录管理）、`cmspro.sso.setting`（登录设置） | `manifest.json` |
 
 ## 八、安装/卸载/升级
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 28 | 迁移兜底 | `runMigrations()` 直接 require 迁移文件执行 | `Install.php` |
-| 29 | 卸载回滚兜底 | `rollbackMigrations()` 逆序回滚 + 删除 migrations 记录 | `Install.php` |
-| 30 | 配置同步 | `install()` / `upgrade()` 均调用 `seedDefaultConfigs()` | `Install.php` |
-| 31 | 卸载清理配置 | `removeConfigs()` 全量清理配置组/配置项 | `Install.php` |
+| #  | 特性     | 说明                                                   | 实现位置          |
+| -- | ------ | ---------------------------------------------------- | ------------- |
+| 28 | 迁移兜底   | `runMigrations()` 直接 require 迁移文件执行                  | `Install.php` |
+| 29 | 卸载回滚兜底 | `rollbackMigrations()` 逆序回滚 + 删除 migrations 记录       | `Install.php` |
+| 30 | 配置同步   | `install()` / `upgrade()` 均调用 `seedDefaultConfigs()` | `Install.php` |
+| 31 | 卸载清理配置 | `removeConfigs()` 全量清理配置组/配置项                        | `Install.php` |
 
 ## 九、视图规范
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 32 | 前台独立布局 | `layouts/home.blade.php` 应用自带布局，不依赖系统布局 | `Views/layouts/home.blade.php` |
-| 33 | 后台独立 HTML | 设置页为完整 HTML 页面，不继承 `layouts.admin` | `Views/Admin/settings/index.blade.php` |
-| 34 | CSRF Token | 前台布局含 `csrf-token` meta，JS 通过 `$.ajaxSetup` 携带 | `Views/layouts/home.blade.php` |
-| 35 | 401 处理 | 前台 JS 统一处理登录过期 | `Views/Home/*.blade.php` |
-| 36 | 前台 API 路径 | `window.SSO_API_BASE` 全局前缀，不随访问模式变化 | `Views/layouts/home.blade.php` |
-| 36.1 | 注册邮箱验证码 | 系统已配置邮箱时注册必填 6 位验证码（复用系统 `/api/user/register/email-code` 接口），验证码一次性失效；未配置邮箱时自动跳过 | `Controllers/HomeApi/AuthController.php` / `Views/Home/auth/register.blade.php` |
-| 36.2 | 找回密码两步流程 | 输入邮箱发送验证码 → 凭验证码重置新密码，成功后跳转登录页；登录页「注册账号」同行右侧显示入口，复用系统 `/api/user/password/*` 接口 | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` |
-| 37 | 前台页面路径 | `window.SSO_BASE` 兼容双模式 | `Views/layouts/home.blade.php` |
+| #    | 特性         | 说明                                                                               | 实现位置                                                                            |
+| ---- | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 32   | 前台独立布局     | `layouts/home.blade.php` 应用自带布局，不依赖系统布局                                          | `Views/layouts/home.blade.php`                                                  |
+| 33   | 后台独立 HTML  | 设置页为完整 HTML 页面，不继承 `layouts.admin`                                               | `Views/Admin/settings/index.blade.php`                                          |
+| 34   | CSRF Token | 前台布局含 `csrf-token` meta，JS 通过 `$.ajaxSetup` 携带                                   | `Views/layouts/home.blade.php`                                                  |
+| 35   | 401 处理     | 前台 JS 统一处理登录过期                                                                   | `Views/Home/*.blade.php`                                                        |
+| 36   | 前台 API 路径  | `window.SSO_API_BASE` 全局前缀，不随访问模式变化                                              | `Views/layouts/home.blade.php`                                                  |
+| 36.1 | 注册邮箱验证码    | 系统已配置邮箱时注册必填 6 位验证码（复用系统 `/api/user/register/email-code` 接口），验证码一次性失效；未配置邮箱时自动跳过 | `Controllers/HomeApi/AuthController.php` / `Views/Home/auth/register.blade.php` |
+| 36.2 | 找回密码两步流程   | 输入邮箱发送验证码 → 凭验证码重置新密码，成功后跳转登录页；登录页「注册账号」同行右侧显示入口，复用系统 `/api/user/password/*` 接口  | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` |
+| 37   | 前台页面路径     | `window.SSO_BASE` 兼容双模式                                                          | `Views/layouts/home.blade.php`                                                  |
 
 ## 十、菜单系统
 
-| # | 特性 | 说明 | 实现位置 |
-|---|------|------|---------|
-| 38 | 后台菜单 | `menus` 声明「统一登录 → 邀请码管理 / 登录设置」，含 `code` 字段 | `manifest.json` |
-| 39 | 前台路由占用 | `home_routes` 声明 `/sso/*` 路由避免冲突 | `manifest.json` |
-| 40 | 邀请注册设置 | 后台「邀请注册」tab：邀请注册开关 + 发放方式（在线购买/指定URL/文字提示）联动表单，按方式校验 | `Views/Admin/settings/index.blade.php` / `SettingController` |
-| 41 | 邀请码管理 | 后台列表（关键词/状态筛选、分页）、批量生成（1-500 个、可选费用快照）、未使用码启停/删除，已使用码仅可复制用于追溯 | `Views/Admin/invite/index.blade.php` / `InviteCodeController` |
-| 42 | 邀请注册闭环 | 注册/手机验证码登录需邀请码（先查账号：获取验证码阶段即检测，老用户直接发送验证码登录，新手机号需凭有效邀请码获取验证码；登录提交兜底校验），事务内原子消费（防并发重复使用），消费失败整体回滚 | `HomeApi/AuthController` |
-| 43 | 邀请码购买 | 游客可访问购买页，经 Onlinepay 创建支付订单（SSOINV_ 前缀），`OrderPaid` 事件监听自动发放邀请码，前端轮询展示并复制 | `Views/Home/invite/buy.blade.php` / `Listeners/HandleInviteOrderPaid` |
-| 44 | 发放方式前台联动 | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示 | `Views/Home/auth/register.blade.php` |
-| 45 | 在线购买依赖校验 | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400） | `SettingController` / `Views/Admin/settings/index.blade.php` |
-| 46 | 微信登录邀请码收集 | 邀请注册开启时，先授权确认账号存在性：已绑定老用户直接登录；仅新微信用户在授权后收集邀请码——微信内授权 redirect 到 `complete-invite` 页填写，PC 扫码经 `login-status` 返回 `need_invite` 弹窗收集，均凭一次性 token 提交 `/auth/wechat/invite` 建号并事务内消费邀请码；微信端 `pc-success?result=invite/failed` 显示对应状态 | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete-invite.blade.php` / `Views/Home/auth/pc-success.blade.php` |
-| 46.1 | QQ 互联登录 | 后台「QQ登录设置」配置 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口；后台「功能选项」支持「QQ网页登录（默认）」（PC 与移动端均直接跳转 QQ互联 OAuth2.0 授权页，state 存 session，回调后直接 login 并 redirect）与「QQ扫码登录」（PC 端弹二维码扫码，state 存 Cache，，回调结果存 Cache，，`login-status` 轮询建登录态），手机浏览器/QQ 内始终跳转 QQ 授权；回调 code 经 `QqOauthService` 换 access_token→openid→用户信息，建号后经 `user_third_party`（platform=qq）绑定，用户名前缀 `qq`，，昵称默认「QQ用户」；state 校验失败回登录页 flash 提示 | `Controllers/HomeApi/AuthController.php` / `Services/QqOauthService.php` / `Views/Home/auth/login.blade.php` |
-| 46.2 | QQ 登录邀请码收集 | 与微信一致：邀请注册开启时先授权确认账号存在性，仅新 QQ 用户凭一次性 token 提交 `/auth/qq/invite` 建号并事务内消费邀请码（微信/QQ 共用 `complete-invite` 页，平台由路径解析） | `HomeApi/AuthController` / `Views/Home/auth/complete-invite.blade.php` |
-| 47 | 登录跳转 redirect 透传 | 登录 URL 携带 `redirect` 参数时，所有登录方式成功后均跳转到该地址（安全校验：仅允许相对路径与同主域绝对地址——含 sso/bbs 等兄弟子域，外部域名回退默认跳转，防开放重定向）：账号密码/注册随表单提交；手机验证码登录随登录请求；PC 扫码随 `login-status` 轮询与邀请码弹窗提交；微信内授权经 session 暂存（`login-url` 暂存、回调取回）；新用户完善资料页经 URL query 透传继续跳转 | `HomeApi/AuthController` / `Home/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete.blade.php` / `Views/Home/auth/complete-invite.blade.php` |
-| 48 | 账号绑定中心 | 登录后首页弹窗查看/绑定/解绑手机号、微信、QQ 三种登录方式：微信/QQ 走授权绑定（`bind-url` 生成链接，state 存 session 绑定专用键 `cmspro_sso_{platform}_bind_oauth_state` 与登录态隔离，与登录共用回调地址，回调按 state 存储位置区分模式；openid 冲突检测——被他人占用拒绝、自己已绑定提示无需重复；绑定落库 `user_third_party` 不改变登录态）；手机号走短信验证码绑定（复用登录短信配置与验证码缓存，手机号全局唯一）；解绑保护——统计密码/手机/微信/QQ 可登录方式总数（平台随机密码 `phone_`/`wx_`/`qq_` 前缀不计入），仅剩一种时拒绝解绑；昵称渲染经 HTML 转义防注入 | `HomeApi/AuthController`（bindings/bindPhone/unbind/oauthBindUrl/bindOauthCallback）/ `Routes/home-api.php` / `Views/Home/home.blade.php` |
-| 49 | 邮箱验证码登录 | 后台「邮箱验证」Tab 开关（SMTP 未配置时显示黄色警示条），前台登录页显示「邮箱」入口；`sendEmailCode()` 复用系统注册验证码缓存键 `user_register_code:{email}` 与邮件模板 `emails.register-code`，10 分钟有效，`RateLimiter` 每分钟每邮箱限发 3 次；`emailLogin()` 验证码 `hash_equals` 校验后一次性失效，已注册邮箱直接登录、未注册邮箱事务内 `createEmailUser()` 建号（用户名取 @ 前缀，冲突加随机后缀，密码随机不可登录）；`isEmailLoginEnabled()` 统一收口「开关开启 + `mail_configured()`」双重判断 | `Services/SettingService.php`（isEmailLoginEnabled）/ `Controllers/HomeApi/AuthController.php`（sendEmailCode/emailLogin/createEmailUser）/ `Routes/home-api.php` / `Views/Admin/settings/index.blade.php` / `Views/Home/auth/login.blade.php` |
-| 50 | 绑定中心按开关过滤 | 绑定中心仅展示后台已开启的快捷登录方式（手机号看 `isPhoneLoginEnabled()`，微信/QQ 看 `{platform}_enabled` 开关），与登录页入口保持一致 | `HomeApi/AuthController::bindings()` |
+| #    | 特性               | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 实现位置                                                                                                                                                                                                                                       |
+| ---- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 38   | 后台菜单             | `menus` 声明「统一登录 → 邀请码管理 / 登录设置」，含 `code` 字段                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `manifest.json`                                                                                                                                                                                                                            |
+| 39   | 前台路由占用           | `home_routes` 声明 `/sso/*` 路由避免冲突                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `manifest.json`                                                                                                                                                                                                                            |
+| 40   | 邀请注册设置           | 后台「邀请注册」tab：邀请注册开关 + 发放方式（在线购买/指定URL/文字提示）联动表单，按方式校验                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `Views/Admin/settings/index.blade.php` / `SettingController`                                                                                                                                                                               |
+| 41   | 邀请码管理            | 后台列表（关键词/状态筛选、分页）、批量生成（1-500 个、可选费用快照）、未使用码启停/删除，已使用码仅可复制用于追溯                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `Views/Admin/invite/index.blade.php` / `InviteCodeController`                                                                                                                                                                              |
+| 42   | 邀请注册闭环           | 注册/手机验证码登录需邀请码（先查账号：获取验证码阶段即检测，老用户直接发送验证码登录，新手机号需凭有效邀请码获取验证码；登录提交兜底校验），事务内原子消费（防并发重复使用），消费失败整体回滚                                                                                                                                                                                                                                                                                                                                                                                                                   | `HomeApi/AuthController`                                                                                                                                                                                                                   |
+| 43   | 邀请码购买            | 游客可访问购买页，经 Onlinepay 创建支付订单（SSOINV\_ 前缀），`OrderPaid` 事件监听自动发放邀请码，前端轮询展示并复制                                                                                                                                                                                                                                                                                                                                                                                                                                         | `Views/Home/invite/buy.blade.php` / `Listeners/HandleInviteOrderPaid`                                                                                                                                                                      |
+| 44   | 发放方式前台联动         | 注册页按发放方式展示：在线购买（费用+购买入口）/ 指定URL（获取链接）/ 文字提示                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `Views/Home/auth/register.blade.php`                                                                                                                                                                                                       |
+| 45   | 在线购买依赖校验         | 发放方式选「在线购买」时校验 Onlinepay 应用安装/启用状态：未就绪显示警告提示，保存被拦截（400）                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `SettingController` / `Views/Admin/settings/index.blade.php`                                                                                                                                                                               |
+| 46   | 微信登录邀请码收集        | 邀请注册开启时，先授权确认账号存在性：已绑定老用户直接登录；仅新微信用户在授权后收集邀请码——微信内授权 redirect 到 `complete-invite` 页填写，PC 扫码经 `login-status` 返回 `need_invite` 弹窗收集，均凭一次性 token 提交 `/auth/wechat/invite` 建号并事务内消费邀请码；微信端 `pc-success?result=invite/failed` 显示对应状态                                                                                                                                                                                                                                                                                    | `HomeApi/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete-invite.blade.php` / `Views/Home/auth/pc-success.blade.php`                                                                                        |
+| 46.1 | QQ 互联登录          | 后台「QQ登录设置」配置 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口；后台「功能选项」支持「QQ网页登录（默认）」（PC 与移动端均直接跳转 QQ互联 OAuth2.0 授权页，state 存 session，回调后直接 login 并 redirect）与「QQ扫码登录」（PC 端弹二维码扫码，state 存 Cache，，回调结果存 Cache，，`login-status` 轮询建登录态），手机浏览器/QQ 内始终跳转 QQ 授权；回调 code 经 `QqOauthService` 换 access\_token→openid→用户信息，建号后经 `user_third_party`（platform=qq）绑定，用户名前缀 `qq`，，昵称默认「QQ用户」；state 校验失败回登录页 flash 提示                                                                                                                              | `Controllers/HomeApi/AuthController.php` / `Services/QqOauthService.php` / `Views/Home/auth/login.blade.php`                                                                                                                               |
+| 46.2 | QQ 登录邀请码收集       | 与微信一致：邀请注册开启时先授权确认账号存在性，仅新 QQ 用户凭一次性 token 提交 `/auth/qq/invite` 建号并事务内消费邀请码（微信/QQ 共用 `complete-invite` 页，平台由路径解析）                                                                                                                                                                                                                                                                                                                                                                                                  | `HomeApi/AuthController` / `Views/Home/auth/complete-invite.blade.php`                                                                                                                                                                     |
+| 47   | 登录跳转 redirect 透传 | 登录 URL 携带 `redirect` 参数时，所有登录方式成功后均跳转到该地址（安全校验：仅允许相对路径与同主域绝对地址——含 sso/bbs 等兄弟子域，外部域名回退默认跳转，防开放重定向）：账号密码/注册随表单提交；手机验证码登录随登录请求；PC 扫码随 `login-status` 轮询与邀请码弹窗提交；微信内授权经 session 暂存（`login-url` 暂存、回调取回）；新用户完善资料页经 URL query 透传继续跳转                                                                                                                                                                                                                                                                                    | `HomeApi/AuthController` / `Home/AuthController` / `Views/Home/auth/login.blade.php` / `Views/Home/auth/complete.blade.php` / `Views/Home/auth/complete-invite.blade.php`                                                                  |
+| 48   | 账号绑定中心           | 登录后首页弹窗查看/绑定/解绑手机号、微信、QQ 三种登录方式：微信/QQ 走授权绑定（`bind-url` 生成链接，PC 传 `device=pc` 时弹二维码扫码绑定——state 存 Cache 绑定键 `cmspro_sso_bind_state:`（含目标用户 id，跨设备回调据此落库），经 `bind-status` 轮询绑定结果 `cmspro_sso_bind_result:`；移动端/跳转绑定 state 存 session 绑定专用键 `cmspro_sso_{platform}_bind_oauth_state` 与登录态隔离；与登录共用回调地址，回调按 state 存储位置区分模式；openid 冲突检测——被他人占用拒绝、自己已绑定提示无需重复；绑定落库 `user_third_party` 不改变登录态）；手机号走短信验证码绑定（复用登录短信配置与验证码缓存，手机号全局唯一）；解绑保护——统计密码/手机/微信/QQ 可登录方式总数（平台随机密码 `phone_`/`wx_`/`qq_` 前缀不计入），仅剩一种时拒绝解绑；昵称渲染经 HTML 转义防注入 | `HomeApi/AuthController`（bindings/bindPhone/unbind/oauthBindUrl/oauthBindStatus/bindOauthCallback/bindPcOauthCallback）/ `Routes/home-api.php` / `Views/Home/home.blade.php`                                                                |
+| 49   | 邮箱验证码登录          | 后台「邮箱验证」Tab 开关（SMTP 未配置时显示黄色警示条），前台登录页显示「邮箱」入口；`sendEmailCode()` 复用系统注册验证码缓存键 `user_register_code:{email}` 与邮件模板 `emails.register-code`，10 分钟有效，`RateLimiter` 每分钟每邮箱限发 3 次；`emailLogin()` 验证码 `hash_equals` 校验后一次性失效，已注册邮箱直接登录、未注册邮箱事务内 `createEmailUser()` 建号（用户名取 @ 前缀，冲突加随机后缀，密码随机不可登录）；`isEmailLoginEnabled()` 统一收口「开关开启 + `mail_configured()`」双重判断                                                                                                                                                            | `Services/SettingService.php`（isEmailLoginEnabled）/ `Controllers/HomeApi/AuthController.php`（sendEmailCode/emailLogin/createEmailUser）/ `Routes/home-api.php` / `Views/Admin/settings/index.blade.php` / `Views/Home/auth/login.blade.php` |
+| 50   | 绑定中心按开关过滤        | 绑定中心仅展示后台已开启的快捷登录方式（手机号看 `isPhoneLoginEnabled()`，微信/QQ 看 `{platform}_enabled` 开关），与登录页入口保持一致                                                                                                                                                                                                                                                                                                                                                                                                                       | `HomeApi/AuthController::bindings()`                                                                                                                                                                                                       |
 
 ## 十一、版本历史
 
-| 版本 | 日期 | 说明 |
-|------|------|--------|
-| 1.0.0 | 2026-08-13 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问 |
-| 1.1.0 | 2026-08-13 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |
-| 1.1.1 | 2026-08-13 | 修复子域名模式：根路径 `/` 跳转登录页；ShareService 从数据库读取访问配置，覆盖系统重定向到子域名 |
-| 1.1.2 | 2026-08-25 | 新增找回密码页（两步验证流程，复用系统密码重置接口）；注册接口接入邮箱验证码校验，与系统注册逻辑一致，未配置邮箱时自动跳过 |
-| 1.2.1 | 2026-08-25 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页 |
-| 1.3.0 | 2026-08-25 | 新增手机验证码登录：短信门面 + 阿里云/腾讯云/火山引擎发送器，验证码限频 60 秒、5 分钟有效、一次性失效，未注册手机号自动建号 |
-| 1.3.1 | 2026-08-31 | 新增邀请注册设置（开关 + 发放方式：在线购买/指定URL/文字提示联动表单）；菜单新增「邀请码管理」入口 |
-| 1.4.0 | 2026-08-31 | 新增邀请码管理：`app_cmspro_sso_invite_codes` 表、列表/批量生成/启停/删除后台页面与 API |
-| 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示；在线购买模式增加 Onlinepay 安装/启用依赖校验 |
-| 1.5.1 | 2026-08-31 | 邀请码收集时机调整：登录授权前不再收集邀请码，改为先确认账号存在性——手机/微信老用户直接登录，仅新用户（服务端 `need_invite`）在授权后补填邀请码；微信端新增 `complete-invite` 填写页，PC 扫码弹窗与手机登录弹窗均改为动态显示邀请码输入框 |
-| 1.5.2 | 2026-08-31 | 手机登录检测前移：获取验证码阶段即检测账号存在性，邀请注册开启时新手机号需先填写有效邀请码（预校验不消费）才发送验证码，前端弹窗动态展开邀请码输入框；老手机号不受影响直接发送 |
-| 1.5.3 | 2026-08-31 | 登录跳转 redirect 全链路透传：登录 URL 携带 `redirect` 时，账号密码/手机验证码/微信扫码/微信内授权登录成功后均跳转到该地址（仅允许相对路径与同主域地址——含兄弟子域如 sso→bbs，防开放重定向）；微信内授权经 session 暂存跳转地址，新用户完善资料页经 URL query 继续透传 |
-| 1.6.0 | 2026-09-02 |新增QQ互联登录：后台「QQ登录设置」配置 QQ互联 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口（PC 扫码与端内/手机浏览器授权两部分态，邀请注册开启时新 QQ 用户经 `complete-invite` 页收集邀请码）；「功能选项」支持「QQ扫码登录」（PC 端弹二维码需 QQ 手机版扫码）与「QQ网页登录（默认）」（跳转 QQ互联 OAuth2.0 认证页授权）；QQ 回调 code 经 `QqOauthService` 换 access_token→openid→用户信息建号并绑定 `user_third_party`（platform=qq）；state 校验失败回登录页 flash 提示 |
-| 1.7.0 | 2026-09-02 | 新增账号绑定中心：登录后首页查看/绑定/解绑手机号、微信、QQ；微信/QQ 授权绑定（state 存 session 绑定专用键与登录态隔离，openid 冲突检测），手机号短信验证码绑定；解绑保护确保至少保留一种可登录方式 |
-| 1.8.0 | 2026-09-02 | 新增邮箱验证码登录：后台「邮箱验证」Tab + 前台「邮箱」入口；复用系统注册验证码缓存键与邮件模板，10 分钟有效、每分钟限发 3 次、一次性失效；未注册邮箱自动建号（用户名取 @ 前缀），邀请注册开启时凭邀请码建号；绑定中心按后台开关过滤展示 |
+| 版本    | 日期         | 说明                                                                                                                                                                                                                                                                                                                           |
+| ----- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.0.0 | 2026-08-13 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问                                                                                                                                                                                                                                                                                              |
+| 1.1.0 | 2026-08-13 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home\_menus 导航                                                                                                                                                                                                                                                                                    |
+| 1.1.1 | 2026-08-13 | 修复子域名模式：根路径 `/` 跳转登录页；ShareService 从数据库读取访问配置，覆盖系统重定向到子域名                                                                                                                                                                                                                                                                    |
+| 1.1.2 | 2026-08-25 | 新增找回密码页（两步验证流程，复用系统密码重置接口）；注册接口接入邮箱验证码校验，与系统注册逻辑一致，未配置邮箱时自动跳过                                                                                                                                                                                                                                                                |
+| 1.2.1 | 2026-08-25 | 根路径 `/` 调整为首页：已登录停留首页，未登录跳转登录页                                                                                                                                                                                                                                                                                               |
+| 1.3.0 | 2026-08-25 | 新增手机验证码登录：短信门面 + 阿里云/腾讯云/火山引擎发送器，验证码限频 60 秒、5 分钟有效、一次性失效，未注册手机号自动建号                                                                                                                                                                                                                                                          |
+| 1.3.1 | 2026-08-31 | 新增邀请注册设置（开关 + 发放方式：在线购买/指定URL/文字提示联动表单）；菜单新增「邀请码管理」入口                                                                                                                                                                                                                                                                        |
+| 1.4.0 | 2026-08-31 | 新增邀请码管理：`app_cmspro_sso_invite_codes` 表、列表/批量生成/启停/删除后台页面与 API                                                                                                                                                                                                                                                               |
+| 1.5.0 | 2026-08-31 | 邀请注册完整闭环：注册/手机登录校验并消费邀请码、`app_cmspro_sso_invite_orders` 购买订单表、Onlinepay 在线购买发放、注册页发放方式联动展示；在线购买模式增加 Onlinepay 安装/启用依赖校验                                                                                                                                                                                                      |
+| 1.5.1 | 2026-08-31 | 邀请码收集时机调整：登录授权前不再收集邀请码，改为先确认账号存在性——手机/微信老用户直接登录，仅新用户（服务端 `need_invite`）在授权后补填邀请码；微信端新增 `complete-invite` 填写页，PC 扫码弹窗与手机登录弹窗均改为动态显示邀请码输入框                                                                                                                                                                                     |
+| 1.5.2 | 2026-08-31 | 手机登录检测前移：获取验证码阶段即检测账号存在性，邀请注册开启时新手机号需先填写有效邀请码（预校验不消费）才发送验证码，前端弹窗动态展开邀请码输入框；老手机号不受影响直接发送                                                                                                                                                                                                                                      |
+| 1.5.3 | 2026-08-31 | 登录跳转 redirect 全链路透传：登录 URL 携带 `redirect` 时，账号密码/手机验证码/微信扫码/微信内授权登录成功后均跳转到该地址（仅允许相对路径与同主域地址——含兄弟子域如 sso→bbs，防开放重定向）；微信内授权经 session 暂存跳转地址，新用户完善资料页经 URL query 继续透传                                                                                                                                                            |
+| 1.6.0 | 2026-09-02 | 新增QQ互联登录：后台「QQ登录设置」配置 QQ互联 AppID/AppKey 并启用后，前台登录页显示 QQ 登录入口（PC 扫码与端内/手机浏览器授权两部分态，邀请注册开启时新 QQ 用户经 `complete-invite` 页收集邀请码）；「功能选项」支持「QQ扫码登录」（PC 端弹二维码需 QQ 手机版扫码）与「QQ网页登录（默认）」（跳转 QQ互联 OAuth2.0 认证页授权）；QQ 回调 code 经 `QqOauthService` 换 access\_token→openid→用户信息建号并绑定 `user_third_party`（platform=qq）；state 校验失败回登录页 flash 提示 |
+| 1.7.0 | 2026-09-02 | 新增账号绑定中心：登录后首页查看/绑定/解绑手机号、微信、QQ；微信/QQ 授权绑定（state 存 session 绑定专用键与登录态隔离，openid 冲突检测），手机号短信验证码绑定；解绑保护确保至少保留一种可登录方式                                                                                                                                                                                                             |
+| 1.8.0 | 2026-09-02 | 新增邮箱验证码登录：后台「邮箱验证」Tab + 前台「邮箱」入口；复用系统注册验证码缓存键与邮件模板，10 分钟有效、每分钟限发 3 次、一次性失效；未注册邮箱自动建号（用户名取 @ 前缀），邀请注册开启时凭邀请码建号；绑定中心按后台开关过滤展示                                                                                                                                                                                                  |
+| 1.9.0 | 2026-09-02 | 绑定中心微信/QQ 支持 PC 扫码绑定：PC 端不再跳转授权页，改为弹二维码扫码（`bind-url?device=pc`，state 存 Cache 绑定键含目标用户，跨设备回调落库），经 `bind-status` 轮询绑定结果；移动端保持跳转授权                                                                                                                                                                                              |
+

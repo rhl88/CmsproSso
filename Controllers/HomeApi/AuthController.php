@@ -39,6 +39,9 @@ class AuthController extends Controller
     // Cache 键前缀：PC 扫码登录 state + 登录结果（跨设备扫码场景）
     protected const CACHE_LOGIN_STATE_PREFIX = 'cmspro_sso_login_state:';
     protected const CACHE_LOGIN_RESULT_PREFIX = 'cmspro_sso_login_result:';
+    // Cache 键前缀：PC 扫码绑定 state（含目标用户）+ 绑定结果（跨设备扫码绑定场景）
+    protected const CACHE_BIND_STATE_PREFIX = 'cmspro_sso_bind_state:';
+    protected const CACHE_BIND_RESULT_PREFIX = 'cmspro_sso_bind_result:';
     // Cache 键前缀：待建号新用户的微信授权数据（邀请码收集期间暂存，凭 token 一次性取回）
     protected const CACHE_OAUTH_DATA_PREFIX = 'cmspro_sso_oauth_data:';
     protected const LOGIN_STATE_TTL = 600;  // 10 分钟过期
@@ -862,6 +865,10 @@ class AuthController extends Controller
      *   2. 仅登录用户可发起（路由受 cmspro.sso.auth 中间件保护）；
      *   3. 回调后走绑定落库流程，不建立新登录态、不改变当前用户。
      *
+     * 支持两种设备场景：
+     *   1. 跳转绑定（默认）：浏览器整体跳转授权页，state 存 session 绑定专用键，回调后可回显；
+     *   2. PC 扫码绑定（device=pc）：PC 端弹二维码扫码，state 存 Cache（含目标用户），跨设备回调后落库，PC 端轮询绑定结果。
+     *
      * @param string $platform 平台标识（wechat/qq）
      */
     protected function oauthBindUrl(Request $request, string $platform): JsonResponse
@@ -885,12 +892,19 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '已绑定' . $label . '，请先解绑'], 400);
         }
 
+        $device = (string) $request->input('device', '');
         // 授权回调地址（与登录共用，回调按 state 存储位置区分登录/绑定模式）
         $callbackUrl = ShareService::frontUrl('/auth/' . $platform . '/callback');
         $state = md5(uniqid((string) mt_rand(), true));
 
-        // 绑定模式：state 存 session 绑定专用键（与登录 state 键隔离，防止误登录）
-        $request->session()->put($this->sessionBindStateKey($platform), $state);
+        if ($device === 'pc') {
+            // PC 扫码绑定：state 存 Cache 绑定专用键（跨设备，回调时 PC 端 session 不可用），
+            // 绑定目标取当前登录用户，回调时据此落库到该用户
+            Cache::put(self::CACHE_BIND_STATE_PREFIX . $state, ['user_id' => $user->id], self::LOGIN_STATE_TTL);
+        } else {
+            // 跳转绑定：state 存 session 绑定专用键（与登录 state 键隔离，防止误登录）
+            $request->session()->put($this->sessionBindStateKey($platform), $state);
+        }
 
         // 微信外挂模式：构建跳转到外挂脚本的 URL（QQ 无外挂模式）
         if ($platform === 'wechat' && $this->settingService->isWechatOauthProxyEnabled()) {
@@ -906,7 +920,7 @@ class AuthController extends Controller
             return response()->json([
                 'code'    => 0,
                 'message' => 'ok',
-                'data'    => ['url' => $url, 'mode' => 'proxy', 'state' => $state],
+                'data'    => ['url' => $url, 'mode' => 'proxy', 'state' => $state, 'device' => $device],
             ]);
         }
 
@@ -923,7 +937,7 @@ class AuthController extends Controller
         return response()->json([
             'code'    => 0,
             'message' => 'ok',
-            'data'    => ['url' => $result['url'], 'mode' => 'native', 'state' => $state],
+            'data'    => ['url' => $result['url'], 'mode' => 'native', 'state' => $state, 'device' => $device],
         ]);
     }
 
@@ -1059,20 +1073,21 @@ class AuthController extends Controller
         $expectedBindState = (string) $request->session()->get($bindStateKey, '');
         $isBindMode = $expectedBindState !== '' && $state !== ''
             && hash_equals($expectedBindState, $state);
+        // 绑定 PC 扫码模式：state 存 Cache 绑定专用键（跨设备扫码，回调时在 bindPcOauthCallback 中消费取回目标用户）
+        $isPcBindMode = false;
+        $isPcMode = false;
 
-        if ($isBindMode) {
-            // 绑定模式：state 使用绑定会话键，消费后即失效
+        if ($state !== '' && Cache::has(self::CACHE_BIND_STATE_PREFIX . $state)) {
+            $isBindMode = true;
+            $isPcBindMode = true;
+        } elseif ($isBindMode) {
+            // 跳转绑定模式：state 使用绑定会话键，消费后即失效
             $request->session()->forget($bindStateKey);
-            $isPcMode = false;
         } elseif ($state !== '' && Cache::has(self::CACHE_LOGIN_STATE_PREFIX . $state)) {
-
-
-
-            // 校验 state：PC 扫码模式（state 存 Cache，跨设备）
+            // 校验 state：PC 扫码登录（state 存 Cache，跨设备）
             $isPcMode = true;
             Cache::pull(self::CACHE_LOGIN_STATE_PREFIX . $state);
         } else {
-            $isPcMode = false;
             $expectedState = (string) $request->session()->get($stateKey, '');
             if ($expectedState === '' || $state === '' || !hash_equals($expectedState, $state)) {
 
@@ -1108,6 +1123,9 @@ class AuthController extends Controller
 
         // 绑定模式：已登录用户发起绑定，校验通过 → 走绑定落库流程（不建立新登录态、不改变当前用户）
         if ($isBindMode) {
+            if ($isPcBindMode) {
+                return $this->bindPcOauthCallback($request, $data, $platform, $state);
+            }
             return $this->bindOauthCallback($request, $data, $platform);
         }
 
@@ -1221,6 +1239,68 @@ class AuthController extends Controller
             'refresh_token'  => $data['refresh_token'] ?? null,
             'raw_data'       => $data['raw_data'] ?? null,
         ]);
+
+        return redirect($homeUrl)->with('success', $label . '绑定成功');
+    }
+
+    /**
+     * 社交绑定 PC 扫码回调（绑定中心）
+     *
+     * PC 端弹二维码，用户用手机扫码授权后进入此处落库。由于扫码跨设备，
+     * 绑定目标用户不依赖回调请求自身的登录态，而是从发起时暂存 Cache 的绑定目标取回。
+     *
+     * 处理结果统一写入绑定结果 Cache，PC 端通过 bind-status 接口轮询获知：
+     *   - 冲突/失败 → 写 error，redirect 提示页；
+     *   - 成功 → 写 bound，redirect 提示页。
+     *
+     * @param array $data 授权数据（openid/nickname/avatar/access_token 等）
+     * @param string $platform 平台标识（wechat/qq）
+     * @param string $state 绑定 state（用于取回目标用户与写入结果）
+     */
+    protected function bindPcOauthCallback(Request $request, array $data, string $platform, string $state)
+    {
+        $homeUrl = ShareService::frontUrl('/home');
+        // 从发起时暂存的绑定目标（PC 端当前登录用户）取回；键为一次性，消费后即失效
+        $bindData = Cache::pull(self::CACHE_BIND_STATE_PREFIX . $state);
+        $ownerUserId = (int) ($bindData['user_id'] ?? 0);
+
+        $label = $this->platformUserLabel($platform);
+        $openid = (string) $data['openid'];
+
+        // 绑定目标校验：无有效目标或账号已注销，向 PC 端回传失败结果
+        if ($ownerUserId <= 0 || !User::find($ownerUserId)) {
+            $message = '绑定目标不存在或已注销，无法完成绑定';
+            Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['error' => $message], self::LOGIN_STATE_TTL);
+            return redirect($homeUrl)->with('error', $message);
+        }
+
+        // openid 冲突检测：已被其他账号绑定时拒绝（一个 openid 仅能绑定一个账号）
+        $conflict = UserThirdParty::where('platform', $platform)
+            ->where('open_id', $openid)
+            ->first();
+        if ($conflict) {
+            $message = $conflict->user_id === $ownerUserId
+                ? '已绑定' . $label . '，无需重复绑定'
+                : '该' . $label . '已绑定其他账号，无法重复绑定';
+            Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['error' => $message], self::LOGIN_STATE_TTL);
+            return redirect($homeUrl)->with('error', $message);
+        }
+
+        // 落库绑定关系到绑定目标用户（不依赖回调请求自身的登录态，不改变任何登录态）
+        UserThirdParty::create([
+            'user_id'        => $ownerUserId,
+            'platform'       => $platform,
+            'open_id'        => $openid,
+            'union_id'       => $data['unionid'] ?? null,
+            'nickname'       => $data['nickname'] ?? null,
+            'avatar'         => $data['avatar'] !== '' ? $data['avatar'] : null,
+            'access_token'   => $data['access_token'] ?? null,
+            'refresh_token'  => $data['refresh_token'] ?? null,
+            'raw_data'       => $data['raw_data'] ?? null,
+        ]);
+
+        // 通知 PC 端：绑定成功
+        Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['bound' => true], self::LOGIN_STATE_TTL);
 
         return redirect($homeUrl)->with('success', $label . '绑定成功');
     }
@@ -1417,6 +1497,63 @@ class AuthController extends Controller
                     ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
                     : $this->resolveRedirect($request),
             ],
+        ]);
+    }
+
+    /**
+     * PC 扫码绑定：轮询检查微信绑定状态（绑定中心）
+     */
+    public function wechatBindStatus(Request $request): JsonResponse
+    {
+        return $this->oauthBindStatus($request, 'wechat');
+    }
+
+    /**
+     * PC 扫码绑定：轮询检查 QQ 绑定状态（绑定中心）
+     */
+    public function qqBindStatus(Request $request): JsonResponse
+    {
+        return $this->oauthBindStatus($request, 'qq');
+    }
+
+    /**
+     * PC 扫码绑定：轮询检查绑定状态（微信/QQ 通用，绑定中心）
+     *
+     * PC 端弹出二维码后，前端轮询此接口获知扫码授权结果：
+     *   - 结果为空 → 尚未扫码授权，返回 bound=false；
+     *   - 有结果 → 一次性消费，成功返回 bound=true，失败返回具体错误。
+     *
+     * @param string $platform 平台标识（wechat/qq）
+     */
+    protected function oauthBindStatus(Request $request, string $platform): JsonResponse
+    {
+        $state = trim((string) $request->input('state', ''));
+        if ($state === '') {
+            return response()->json(['code' => 400, 'message' => '缺少 state'], 400);
+        }
+
+        $result = Cache::get(self::CACHE_BIND_RESULT_PREFIX . $state);
+        if (!$result) {
+            // 尚未扫码授权
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['bound' => false],
+            ]);
+        }
+
+        // 一次性结果：消费后即清理，避免重复绑定提示
+        Cache::forget(self::CACHE_BIND_RESULT_PREFIX . $state);
+
+        // 扫码授权确认后绑定失败（如 openid 冲突）：向 PC 端返回具体错误
+        if (isset($result['error'])) {
+            return response()->json(['code' => 422, 'message' => (string) $result['error']], 422);
+        }
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '绑定成功',
+            'data'    => ['bound' => true],
         ]);
     }
 

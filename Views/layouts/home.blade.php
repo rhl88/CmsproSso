@@ -203,14 +203,13 @@
             background: #12b7f5;
             color: #fff;
         }
-        /* 真实 QQ 企鹅图标（内联 SVG，本地化） */
+        /* 真实 QQ 企鹅图标（官方 PNG，base64 内嵌本地化） */
         .sso-qq-icon {
             width: 20px;
             height: 20px;
             display: inline-block;
-            background: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2048%2048%27%3E%3Ccircle%20cx=%2724%27%20cy=%2712%27%20r=%2710%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2728%27%20rx=%279%27%20ry=%2712%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2728%27%20rx=%275.5%27%20ry=%277.5%27%20fill=%27%23ffffff%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2712%27%20rx=%277%27%20ry=%276.5%27%20fill=%27%23ffffff%27/%3E%3Ccircle%20cx=%2720.5%27%20cy=%2710.5%27%20r=%272.2%27%20fill=%27%230b0b0b%27/%3E%3Ccircle%20cx=%2727.5%27%20cy=%2710.5%27%20r=%272.2%27%20fill=%27%230b0b0b%27/%3E%3Cellipse%20cx=%2724%27%20cy=%2716%27%20rx=%272.6%27%20ry=%271.8%27%20fill=%27%23ffb400%27/%3E%3Cpath%20d=%27M15%2020c3%202%206.2%203%209%203s6-1%209-3l-2.2%205.5H17.2z%27%20fill=%27%2312b7f5%27/%3E%3Cpath%20d=%27M19.5%2043l-3.2%203c-1%20.9%201%202%202%201l5.5-3c.7-.4%201.6-.4%202.4%200l5.5%203c1%20.9%203-.1%202-1l-3.2-3z%27%20fill=%27%23ff9d00%27/%3E%3C/svg%3E") no-repeat center / contain;
+            background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAD4AAAA+CAMAAABEH1h2AAABOFBMVEUAAAAAAAAAAAAAAAAAAAAAAAAAAAD/qgAAAAAAAAAAAAAAAAAAAAAAAAD/qwA6JQAAAAD/qgAAAAAAAAD/AAr/AAb/qgD6pADWigDDfgAAAACDVQD/qgD/qgD/AAf/qQD/AAb/AAmrAAn/AAZuRwD/AAmwAAz/AAP/qwDEAAz/qwD/qwAAAAD/////AAb/qgAgICDf39+AgIDv7++/v7//3+QQEBDmlACgoKBAQEDGAAn/naxgYGDFfwCvr68RCwCQkJAwMDDnAAoyAAZiQABBKwBwcHD/LFZQUFBTAwshCwIRAAL1nwAxIADPz8+2AApvAAn3AAiTYACEVQD/tsD/jJ3/WHP/RGT/BkaVAAmFAAnWAAhDAAfWigC0dACkagBzSgBSNQD/e4v/aoJ/f39fX191Ljj/ACNyaO4HAAAALHRSTlMAvyDf72Cf34AQQDBwryCjULqQfxXv79fX18+/kIBoWEDf37+/n5CQj0AwEMawQLgAAALaSURBVEjHzZbXWuJAGIbFhC6uuq69bW/fQEIwAZeOioDYe3fr/d/BkhlGWJKZxPXE9yhPwpu/zDD5h54p0ZHQnAJACUyMRR8rxwLoJzT8GHmYyv/7gqAKJ4pf/yVcUeN+7Sf4cQhRot7rpYCiZYiu0atfBimDkfCduk4I0U37PaRDGoyY15KBkSM2mwCy9oVhghLw0ENgpDsRtWIRgEH0jE4q/sIrYGSJAeQyAGjiO1vwE34MPLqtV2w9kzNI0cihS9Qrd177T2TLtk5rByfoI3du2SuXZ53nhOR952g6MfK8i1k8oHiVztFMMEwNHHnxEXBK94e311bKxirc3G2UwIl7d+6wkBqksO7duwAo7ZQL22CMeOpYt5zR22BEZDpnvfBP5NsNwFtX0KN5f1C4trYt6+aANo4zIY0uRx79TaMmd1u1vQ9CeyXZ4XL3Yu+q1hrwmrXG3vlutfP81aRIf5/sY796ucaoVvf7HywJ7MmkL94K9KWkP1bc9dc+9Y+u9mdfrrB5oWbjfG3fQ63uXly13LZ9VIVN7ffxiZv35+z0x3GjJTwvg2BsklWufGMcHa2uEkoFjKh4w5Z7Ohlki29c8TGXleh54Wkf5HpRom+ii2NUSKBLRqKnITpyVH+6IPsYOEU/ujqgj8BX60THdaJPJ99P6vX6Wf3UfeFUl+M6QO+xbSMmR9tGTzxn5yJ07bckuknLDji/lADm2EtMsb3Dmj6sOlrPpsYEWzkR5W7VMYeuqHG+fGmhXuEbLjI4ogXjD98J05DlHmI/H3MfhmXh8zy4/Dtj6q52lv1VZdCuouKWvq4JRhPn5s8ZAluaeq98bTD/jE/76+Js064/rfeHpl1rzyyPyuXRcXsWomOMmS/qzC3TrV467Dya+iR7wfJUdxLhw4SmaaCU+LwSlvjTKY5118YDpY2D7RRnUax/WRgPh1OM8PTs/IsO7+ZnevfC4wujQ8+Gv2sec3AKXOACAAAAAElFTkSuQmCC") no-repeat center / contain;
         }
-        .sso-qq-btn:hover .sso-qq-icon { filter: brightness(0) invert(1); }
         .sso-email-btn {
             flex: 1;
             height: 44px;

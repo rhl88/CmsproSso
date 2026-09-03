@@ -257,7 +257,7 @@
                             <div class="layui-form-item">
                                 <label class="layui-form-label">公众号 AppSecret</label>
                                 <div class="layui-input-block">
-                                    <input type="password" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
+                                    <input type="text" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
                                            placeholder="请输入 AppSecret" class="layui-input">
                                     <div class="layui-form-mid layui-word-aux">微信公众平台的 AppSecret，用于 code 换取 openid</div>
                                 </div>
@@ -317,7 +317,7 @@
                             <div class="layui-form-item">
                                 <label class="layui-form-label">QQ互联 AppKey</label>
                                 <div class="layui-input-block">
-                                    <input type="password" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
+                                    <input type="text" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
                                            placeholder="请输入 AppKey" class="layui-input">
                                     <div class="layui-form-mid layui-word-aux">QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid</div>
                                 </div>

@@ -1619,7 +1619,7 @@ class AuthController extends Controller
      *
      * 流程：校验 state（防 CSRF）→ 授权码换访问令牌 → 取服务端用户信息 →
      * 以「sso + 服务端用户 id」为身份锚点查找/创建本地账号并登录。
-     * 邀请注册开启时，新用户先跳邀请码填写页（与其他社交平台一致）。
+     * 新用户跳分流页（完善资料 / 账号绑定）；邀请注册开启时先跳邀请码填写页。
      */
     public function relayCallback(Request $request)
     {
@@ -1672,18 +1672,23 @@ class AuthController extends Controller
             'raw_data'      => $info,
         ];
 
-        // 邀请注册模式下：老用户直接登录，新用户先跳邀请码填写页
+        // 新用户分流：邀请注册开启时先跳邀请码填写页；否则跳完善资料页，
+        // 页内提供「完善资料（新建账号）」与「账号绑定（登录已有账号）」两种选择。
+        // 授权数据暂存 Cache（凭 token 一次性取回，与邀请码收集流程一致）。
         $existingUser = $this->findOauthUser($data['openid'], 'relay');
-        if ($existingUser === null && $this->settingService->get('invite_enabled', '0') === '1') {
+        if ($existingUser === null) {
             $token = bin2hex(random_bytes(16));
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
 
-            $inviteUrl = ShareService::frontUrl('/auth/relay/complete-invite?token=' . $token);
+            $targetUrl = $this->settingService->get('invite_enabled', '0') === '1'
+                ? '/auth/relay/complete-invite'
+                : '/auth/relay/complete';
+            $nextUrl = ShareService::frontUrl($targetUrl . '?token=' . $token);
             if ($redirect !== '') {
-                $inviteUrl .= '&redirect=' . urlencode($redirect);
+                $nextUrl .= '&redirect=' . urlencode($redirect);
             }
 
-            return redirect($inviteUrl);
+            return redirect($nextUrl);
         }
 
         try {
@@ -1861,6 +1866,166 @@ class AuthController extends Controller
                     ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
                     : $this->resolveRedirect($request),
             ],
+        ]);
+    }
+
+    /**
+     * 快捷模式新用户：选择「完善资料」创建新账号
+     *
+     * 客户端完善资料页 Tab1 提交：凭 token 取回暂存的授权数据，
+     * 创建本地账号并绑定 relay 身份，随后建立登录态。
+     * 邀请注册开启时本接口不可用（需先经 complete-invite 页消费邀请码）。
+     */
+    public function setupAccount(Request $request): JsonResponse
+    {
+        if (!$this->settingService->isRelayClient()) {
+            return response()->json(['code' => 400, 'message' => '快捷模式客户端未开启'], 400);
+        }
+
+        $validated = $request->validate([
+            'token'    => 'required|string|size:32',
+            'nickname' => 'nullable|string|max:50',
+            'phone'    => 'nullable|string|max:20',
+        ]);
+
+        $data = Cache::pull(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== 'relay') {
+            return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
+        }
+
+        try {
+            [$user, $isNew] = $this->resolveOrCreateUser($data, '', 'relay');
+        } catch (\RuntimeException $e) {
+            // 建号失败（如并发下绑定已存在等）：授权数据放回，允许用户重试
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $validated['token'], $data, self::LOGIN_STATE_TTL);
+
+            return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
+        }
+
+        // 建号成功后补充用户在分流页填写的昵称/手机号
+        $profile = [];
+        if (!empty($validated['nickname'])) {
+            $profile['nickname'] = $validated['nickname'];
+        }
+        if (!empty($validated['phone'])) {
+            $profile['phone'] = $validated['phone'];
+        }
+        if (!empty($profile)) {
+            $user->update($profile);
+        }
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
+        $user->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($user->id, 'relay', $request, 1, '快捷登录注册成功');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '账号创建成功',
+            'data'    => ['redirect' => $this->resolveRedirect($request)],
+        ]);
+    }
+
+    /**
+     * 快捷模式新用户：选择「账号绑定」登录已有账号
+     *
+     * 客户端完善资料页 Tab2 提交：凭账号（用户名/手机号/邮箱）+ 密码校验已有账号，
+     * 校验通过后将 relay 身份绑定到该账号并切换登录态。
+     * 失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
+     */
+    public function bindAccount(Request $request): JsonResponse
+    {
+        if (!$this->settingService->isRelayClient()) {
+            return response()->json(['code' => 400, 'message' => '快捷模式客户端未开启'], 400);
+        }
+
+        $validated = $request->validate([
+            'token'    => 'required|string|size:32',
+            'account'  => 'required|string',
+            'password' => 'required|string',
+        ], [
+            'account.required'  => '请输入账号',
+            'password.required' => '请输入密码',
+        ]);
+
+        $data = Cache::get(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== 'relay') {
+            return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
+        }
+
+        $account = $validated['account'];
+        $lockKey = 'cmspro_sso_login_lock:' . md5(strtolower($account));
+
+        // 账号已被锁定
+        if (Cache::has($lockKey)) {
+            $remaining = (int) ceil(Cache::get($lockKey) / 60);
+
+            return response()->json([
+                'code'    => 429,
+                'message' => '登录失败次数过多，请 ' . $remaining . ' 分钟后再试',
+            ], 429);
+        }
+
+        // 仅取身份字段（用户名/手机号/邮箱）查询，密码单独校验
+        $identity = $this->resolveCredentials($account, '');
+        unset($identity['password']);
+
+        $target = User::where($identity)
+            ->where('status', 1)
+            ->first();
+        if (!$target || !Hash::check($validated['password'], $target->password)) {
+            // 与账号密码登录共用失败计数与锁定策略
+            $failKey = 'cmspro_sso_login_fail:' . md5(strtolower($account));
+            $failures = (int) Cache::get($failKey, 0) + 1;
+            if ($failures >= self::MAX_FAILURES) {
+                Cache::put($lockKey, self::LOCK_MINUTES * 60, self::LOCK_MINUTES * 60);
+                Cache::forget($failKey);
+
+                return response()->json([
+                    'code'    => 429,
+                    'message' => '登录失败次数过多，账号已锁定 ' . self::LOCK_MINUTES . ' 分钟',
+                ], 429);
+            }
+            Cache::put($failKey, $failures, self::LOCK_MINUTES * 60);
+
+            return response()->json(['code' => 400, 'message' => '账号或密码错误'], 400);
+        }
+
+        // 校验通过，消费授权数据（并发下绑定关系可能已被建立，需复查）
+        $openid = (string) $data['openid'];
+        $conflict = UserThirdParty::where('platform', 'relay')->where('open_id', $openid)->first();
+        if ($conflict) {
+            Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+
+            return response()->json(['code' => 400, 'message' => '该快捷登录身份已绑定其他账号，请直接登录'], 400);
+        }
+
+        DB::transaction(function () use ($data, $openid, $target) {
+            UserThirdParty::create([
+                'user_id'        => $target->id,
+                'platform'       => 'relay',
+                'open_id'        => $openid,
+                'union_id'       => $data['unionid'] ?? null,
+                'nickname'       => $data['nickname'] ?? null,
+                'avatar'         => $data['avatar'] !== '' ? $data['avatar'] : null,
+                'access_token'   => $data['access_token'] ?? null,
+                'refresh_token'  => $data['refresh_token'] ?? null,
+                'raw_data'       => $data['raw_data'] ?? null,
+            ]);
+        });
+        Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+
+        Auth::guard('web')->login($target);
+        $request->session()->regenerate();
+        $target->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($target->id, 'relay', $request, 1, '快捷登录绑定已有账号');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '绑定成功',
+            'data'    => ['redirect' => $this->resolveRedirect($request)],
         ]);
     }
 

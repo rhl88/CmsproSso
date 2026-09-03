@@ -30,6 +30,9 @@ Route::post('/auth/qq/invite', [AuthController::class, 'submitInvite']);
 // 快捷模式客户端 API（中转登录，仅 quick_mode=client 时开放）
 Route::get('/auth/relay/login-url', [AuthController::class, 'relayLoginUrl']);
 Route::post('/auth/relay/invite', [AuthController::class, 'submitInvite']);
+// 新用户分流：完善资料（新建账号） / 账号绑定（登录已有账号）
+Route::post('/auth/relay/setup', [AuthController::class, 'setupAccount']);
+Route::post('/auth/relay/bind', [AuthController::class, 'bindAccount']);
 Route::post('/auth/relay/complete', [AuthController::class, 'completeProfile']);
 
 // 手机验证码登录 API

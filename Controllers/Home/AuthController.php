@@ -160,21 +160,27 @@ class AuthController extends Controller
     }
 
     /**
-     * 首次社交登录完善资料页（微信/QQ 通用）
+     * 首次社交登录完善资料页（微信/QQ/relay 通用）
+     *
+     * relay 平台带 token（快捷登录新用户分流：完善资料 / 账号绑定双 Tab），
+     * token 为授权数据暂存句柄，透传给视图供提交接口使用。
      */
     public function completeForm(Request $request)
     {
         $user = auth('web')->user();
-        if (!$user) {
+        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
+        $token = (string) $request->input('token', '');
+
+        // relay 分流页无需登录态（凭 token 完成建号/绑定），其他平台需已登录
+        if ($platform !== 'relay' && !$user) {
             return redirect(ShareService::frontUrl('/login'));
         }
-
-        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
 
         return view('cmspro.sso::Home.auth.complete', [
             'user'     => $user,
             'platform' => $platform,
             'redirect' => (string) $request->input('redirect', ''),
+            'token'    => $token,
         ]);
     }
 

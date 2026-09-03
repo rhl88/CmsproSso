@@ -110,7 +110,9 @@
 | POST | `/api/cmspro/sso/user/unbind/{platform}` | 解绑（platform=phone/wechat/qq，需登录） |
 | GET | `/api/cmspro/sso/auth/relay/login-url` | 获取快捷模式中转授权跳转地址（客户端模式，state 存 session） |
 | POST | `/api/cmspro/sso/auth/relay/invite` | 快捷模式新用户凭邀请码建号 |
-| POST | `/api/cmspro/sso/auth/relay/complete` | 快捷模式首次登录完善资料 |
+| POST | `/api/cmspro/sso/auth/relay/complete` | 快捷模式首次登录完善资料（新建账号） |
+| POST | `/api/cmspro/sso/auth/relay/setup` | 快捷模式新用户分流：完善资料建号（参数：token/nickname/phone，token 一次性消费） |
+| POST | `/api/cmspro/sso/auth/relay/bind` | 快捷模式新用户分流：绑定已有本地账号（参数：token/account/password，密码错误计数锁定，openid 冲突拒绝） |
 
 ### 3.5 快捷模式开放 API（服务端）
 
@@ -307,3 +309,4 @@ app/Apps/CmsproSso/
 | 2.0.2 | 2026-09-03 | 「客户端管理」菜单默认隐藏：新增 `Install::postInstall` 钩子按站点角色同步菜单状态（默认独立站隐藏，重装时按已存配置同步）；菜单可见性同步逻辑收敛至 `SettingService::syncClientsMenuVisibility`；公众号 AppSecret 与 QQ互联 AppKey 输入框改为明文显示；新增安装菜单同步测试用例 |
 | 2.0.3 | 2026-09-03 | 站点角色为客户端时微信/QQ 设置 Tab 仅保留启用开关，本地凭证配置自动隐藏，保存时不再校验本地凭证（社交登录走服务端中转）；新增客户端模式免凭证校验测试用例 |
 | 2.0.4 | 2026-09-03 | 客户端模式登录页微信/QQ 登录入口改为委托服务端中转：`login-url` 接口在客户端模式返回服务端 OAuth2 authorize 跳转地址（新增 `mode: relay` 字段），前端按 mode 整页跳转服务端授权页（不再提示「本站社交登录已由统一登录中转」）；回调复用 `/auth/relay/callback` 建号登录；原 400 报错断言测试替换为委托中转测试；访问设置「客户端密钥」输入框同步改为明文显示 |
+| 2.0.5 | 2026-09-03 | 快捷登录新用户分流页支持双 Tab：客户端模式回调未检测到本地账号时不再直接建号，授权数据暂存 Cache（token 一次性消费）后跳转完善资料页；页内提供「完善资料（默认，新建账号）」与「账号绑定（登录已有账号）」两种选择，绑定需账号密码验证（错误 5 次锁定 15 分钟），openid 已被其他账号绑定或账号停用时拒绝并提示；redirect 跳转全链路透传；新增 10 个分流测试用例 |

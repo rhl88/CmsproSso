@@ -8,6 +8,7 @@ use App\Apps\CmsproSso\Models\Client;
 use App\Models\User;
 use App\Models\UserThirdParty;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -367,15 +368,20 @@ class SsoOAuthRelayTest extends TestCase
         ]));
         $callback->assertRedirect();
 
-        // 3. 本地建号：platform=relay，openid=sso_777（身份锚点为服务端用户 id）
-        $binding = UserThirdParty::where('platform', 'relay')->where('open_id', 'sso_777')->first();
-        $this->assertNotNull($binding);
-        $user = User::find($binding->user_id);
-        $this->assertNotNull($user);
-        $this->assertSame('服务端昵称', $user->nickname);
-        // 已建立登录态，state 已消费
-        $this->assertAuthenticated('web');
-        $this->assertSame($user->id, (int) auth('web')->id());
+        // 3. 新用户不再直接建号，跳分流页（完善资料 / 账号绑定），授权数据暂存 Cache
+        $location = (string) $callback->headers->get('Location');
+        $this->assertStringContainsString('/auth/relay/complete?', $location);
+        parse_str((string) parse_url($location, PHP_URL_QUERY), $next);
+        $this->assertNotEmpty($next['token'] ?? '');
+
+        $cached = Cache::get('cmspro_sso_oauth_data:' . $next['token']);
+        $this->assertIsArray($cached);
+        $this->assertSame('sso_777', $cached['openid']);
+        $this->assertSame('relay', $cached['platform']);
+
+        // 未建号、未登录，state 已消费
+        $this->assertSame(0, UserThirdParty::where('platform', 'relay')->count());
+        $this->assertGuest('web');
         $response->assertSessionMissing('cmspro_sso_relay_oauth_state');
     }
 

@@ -32,12 +32,15 @@
 | 检查项 | 预期结果 |
 |--------|---------|
 | `apps` 表 | 存在 `cmspro.sso` 记录，status=1（启用） |
-| `admin_menus` 表 | 存在「统一登录」菜单（含邀请码管理、登录设置子菜单） |
+| `admin_menus` 表 | 存在「统一登录」菜单（含邀请码管理、登录设置、客户端管理子菜单） |
 | `admin_permissions` 表 | 存在 `cmspro.sso.manage`、`cmspro.sso.setting` 权限 |
-| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（33 项） |
+| `config_items` 表 | 存在 `app_cmspro_sso_*` 配置项（42 项，8 组） |
 | `app_cmspro_sso_login_logs` 表 | 已创建 |
 | `app_cmspro_sso_invite_codes` 表 | 已创建 |
 | `app_cmspro_sso_invite_orders` 表 | 已创建 |
+| `app_cmspro_sso_clients` 表 | 已创建（快捷模式客户端） |
+| `app_cmspro_sso_auth_codes` 表 | 已创建（快捷模式授权码） |
+| `app_cmspro_sso_access_tokens` 表 | 已创建（快捷模式访问令牌） |
 
 ## 三、功能验证
 
@@ -105,6 +108,20 @@
 | GET | `/api/cmspro/sso/auth/qq/bind-status` | PC 扫码绑定状态轮询（需登录，参数 `state`） |
 | POST | `/api/cmspro/sso/user/bind/phone` | 手机验证码绑定（需登录） |
 | POST | `/api/cmspro/sso/user/unbind/{platform}` | 解绑（platform=phone/wechat/qq，需登录） |
+| GET | `/api/cmspro/sso/auth/relay/login-url` | 获取快捷模式中转授权跳转地址（客户端模式，state 存 session） |
+| POST | `/api/cmspro/sso/auth/relay/invite` | 快捷模式新用户凭邀请码建号 |
+| POST | `/api/cmspro/sso/auth/relay/complete` | 快捷模式首次登录完善资料 |
+
+### 3.5 快捷模式开放 API（服务端）
+
+服务端开放 API 基础路径：`/api/cmspro/sso/oauth`（跨站服务器间调用，无 session/CSRF，限流 120 次/分钟；仅 `quick_mode=server` 时可用）
+
+| 方法 | URL | 说明 |
+|------|-----|------|
+| GET | `/api/cmspro/sso/oauth/platforms?client_id=` | 查询可中转的社交平台列表（仅返回已启用且凭证已配置的平台） |
+| POST | `/api/cmspro/sso/oauth/token` | 授权码换取访问令牌（参数：grant_type=authorization_code、client_id、client_secret、code、redirect_uri） |
+| GET | `/api/cmspro/sso/oauth/userinfo` | 凭 `Authorization: Bearer {token}` 获取服务端用户信息（id/username/nickname/avatar/platform） |
+| POST | `/api/cmspro/sso/oauth/revoke` | 吊销访问令牌（参数：token） |
 
 ### 3.5 手机验证码登录
 
@@ -141,7 +158,7 @@
 - 绑定成功后首页 flash 提示「绑定成功」，绑定列表实时刷新
 - 仅剩一种登录方式时点击「解绑」返回「当前仅剩此一种登录方式，不可解绑」
 
-### 3.7 邮箱验证码登录
+### 3.8 邮箱验证码登录
 
 后台「邮箱验证 → 邮箱验证码登录」开关开启后，前台登录页出现「邮箱」按钮，点击弹出邮箱验证码登录弹窗。
 
@@ -155,6 +172,31 @@
 - 邮箱已注册：验证码校验通过后自动登录；未注册：自动创建用户（用户名取邮箱 @ 前缀，密码随机不可登录），跳转完善资料页
 - 邀请注册开启时与手机登录一致：老邮箱用户直接发送验证码登录，新邮箱需凭有效邀请码获取验证码（前端动态展开邀请码输入框）
 - 登录日志 `platform` 记录为 `email`
+
+### 3.9 快捷模式（社交登录中转）
+
+后台「快捷模式设置」选择站点角色，实现站点间社交登录中转：
+
+| 角色 | 说明 |
+|------|------|
+| 独立站（默认） | 社交登录使用本站自身配置，与其他应用无交互 |
+| 服务端 | 本站社交登录可供其他站点中转使用，通过「客户端管理」发放凭证；前台新增授权端点 `/sso/oauth/authorize` |
+| 客户端 | 本地社交配置强制失效（微信/QQ 开关与凭证均不生效），登录页社交入口改为服务端可中转平台，社交登录委托服务端完成 |
+
+**服务端配置步骤**：站点角色选「服务端」→「登录设置」开启微信/QQ 并配置凭证 →「客户端管理」新建客户端（填写名称与回调地址白名单）→ 将 client_id / client_secret 发放给客户端站点。
+
+**客户端配置步骤**：站点角色选「客户端」→ 填写服务端地址（子域名模式填域名如 `https://sso.example.com`，路径前缀模式填含前缀地址如 `http://www.example.com/sso`）→ 填写服务端发放的 client_id / client_secret。
+
+**流程说明**：客户端用户点击社交入口 → 调用 `/api/cmspro/sso/auth/relay/login-url`（state 存 session）→ 跳转服务端 `/sso/oauth/authorize` → 服务端未登录则先登录 → 签发一次性授权码（5 分钟有效）回跳客户端 `/sso/auth/relay/callback` → 客户端以 code 换 access_token（服务器间调用，1 小时有效）→ 取服务端用户信息 → 以「sso + 服务端用户 id」为身份锚点查找/创建本地账号并登录。无论中转哪个社交平台，同一服务端账号在客户端始终对应同一本地账号。
+
+验证要点：
+- 非对应模式下访问 `/sso/oauth/authorize`、`/sso/auth/relay/callback` 均返回 404 页
+- 客户端模式登录页社交入口展示服务端可中转平台（服务端未启用或凭证未配置的平台不展示），点击走中转流程
+- 服务端 authorize 校验 client_id 存在且启用、回调地址与白名单精确一致、response_type=code、platform 已启用，任一不满足返回 400 且不跳转（防开放重定向）
+- 授权码一次性使用，重放/过期/凭证错误/回调地址不一致均被拒绝
+- 服务端禁用或删除客户端后，客户端站点的中转登录立即失效
+- 邀请注册开启时，客户端模式新用户先跳邀请码填写页，与其他社交平台一致
+- 客户端登录日志 `platform` 记录为 `relay`
 
 ## 四、卸载验证
 
@@ -181,30 +223,48 @@ app/Apps/CmsproSso/
 │   └── sso.php                    # 应用配置默认值
 ├── Controllers/
 │   ├── Admin/
-│   │   └── SettingController.php  # 后台设置
+│   │   ├── SettingController.php  # 后台设置
+│   │   ├── InviteCodeController.php # 邀请码管理
+│   │   └── ClientController.php   # 快捷模式客户端管理
 │   ├── Home/
-│   │   └── AuthController.php     # 前台页面控制器
+│   │   ├── AuthController.php     # 前台页面控制器
+│   │   └── OAuthController.php    # 快捷模式服务端授权端点
 │   └── HomeApi/
-│       ├── AuthController.php     # 前台 API 控制器（登录/微信）
+│       ├── AuthController.php     # 前台 API 控制器（登录/微信/QQ/中转）
+│       ├── OAuthController.php    # 快捷模式开放 API 控制器
 │       └── QrCodeController.php   # 二维码生成
 ├── Middleware/
-│   └── FrontAuthMiddleware.php    # 前台认证中间件
-├── Migrations/
-│   └── 2026_08_13_000001_create_app_cmspro_sso_login_logs_table.php
+│   ├── FrontAuthMiddleware.php    # 前台认证中间件
+│   └── OverrideSystemAuthMiddleware.php # 覆盖系统登录中间件
+├── Migrations/                    # 迁移（登录日志/邀请码/购买订单/客户端/授权码/访问令牌）
 ├── Models/
-│   └── LoginLog.php               # 登录日志模型
+│   ├── LoginLog.php               # 登录日志模型
+│   ├── InviteCode.php             # 邀请码模型
+│   ├── InviteOrder.php            # 邀请码购买订单模型
+│   ├── Client.php                 # 快捷模式客户端模型
+│   ├── AuthCode.php               # 快捷模式授权码模型
+│   └── AccessToken.php            # 快捷模式访问令牌模型
 ├── Routes/
 │   ├── admin.php                  # 后台路由
 │   ├── home.php                   # 前台页面路由
-│   └── home-api.php               # 前台 API 路由
+│   ├── home-api.php               # 前台 API 路由
+│   └── oauth-api.php              # 快捷模式开放 API 路由（服务端）
 ├── Services/
 │   ├── SettingService.php         # 配置服务
 │   ├── ShareService.php           # 前台 URL 生成
 │   ├── WechatOauthService.php     # 微信 OAuth2 服务
+│   ├── QqOauthService.php         # QQ 互联 OAuth2 服务
 │   ├── SmsService.php             # 短信发送门面（按服务商调度）
-│   └── Sms/                       # 短信发送器（阿里云/腾讯云/火山引擎）
+│   ├── Sms/                       # 短信发送器（阿里云/腾讯云/火山引擎）
+│   ├── OAuthService.php           # 快捷模式服务端 OAuth 服务
+│   └── RelayClientService.php     # 快捷模式客户端中转服务
+├── Tests/                         # 应用级测试（Feature）
+│   ├── SsoPcBindTest.php
+│   └── SsoOAuthRelayTest.php      # 快捷模式全流程测试（21 用例）
 ├── Views/
 │   ├── Admin/settings/index.blade.php   # 后台设置页
+│   ├── Admin/clients/index.blade.php    # 后台客户端管理页
+│   ├── Admin/invite/index.blade.php     # 后台邀请码管理页
 │   ├── Home/                             # 前台页面
 │   └── layouts/home.blade.php            # 前台布局
 └── doc/                           # 应用文档
@@ -238,3 +298,4 @@ app/Apps/CmsproSso/
 | 1.8.0 |2026-09-02 |新增邮箱验证码登录：后台新增「邮箱验证」Tab（SMTP 未配置时显示警示条），开启后前台登录页显示「邮箱」入口；验证码 10 分钟有效（复用系统注册验证码缓存键与邮件模板）、每分钟每邮箱限发 3 次、一次性失效；未注册邮箱自动创建用户（用户名取 @ 前缀），邀请注册开启时新邮箱凭邀请码建号 |
 | 1.9.0 | 2026-09-02 | 绑定中心微信/QQ 支持 PC 扫码绑定：PC 端改为弹出二维码扫码（`bind-url?device=pc` state 存 Cache 绑定键含目标用户、跨设备回调落库，`bind-status` 轮询结果）；移动端/微信内仍走跳转授权 |
 | 1.9.1 | 2026-09-03 | 绑定展示形态由后端统一决策：`bind-url` 返回新增 `display` 字段（qrcode=内嵌二维码，redirect=跳转授权），PC 端 QQ 依后台 `qq_mode` 分流（修正绑定中心固定弹二维码、未按 `qq_mode` 分流的问题）；微信 PC 固定扫码、移动端跳转授权不变 |
+| 1.10.0 | 2026-09-03 | 新增快捷模式（社交登录中转）：后台「快捷模式设置」选择站点角色（独立站/服务端/客户端）；服务端以 OAuth2 授权码模式开放统一登录中转（`/sso/oauth/authorize` 授权端点 + `/api/cmspro/sso/oauth` 开放 API：platforms/token/userinfo/revoke），新增「客户端管理」（client_id/client_secret 发放、回调白名单、启停、重置密钥）；客户端本地社交配置强制失效，登录页社交入口改为服务端可中转平台，以「sso+服务端用户id」为身份锚点建号登录，邀请注册与 redirect 跳转全链路兼容；新增 `app_cmspro_sso_clients/auth_codes/access_tokens` 三表与 21 个 Feature 测试用例 |

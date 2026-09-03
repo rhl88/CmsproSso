@@ -27,6 +27,11 @@ Route::post('/auth/qq/complete', [AuthController::class, 'completeProfile']);
 // 邀请注册开启时，QQ 新用户凭 token 提交邀请码完成注册（PC 弹窗 / QQ 端 complete-invite 页共用）
 Route::post('/auth/qq/invite', [AuthController::class, 'submitInvite']);
 
+// 快捷模式客户端 API（中转登录，仅 quick_mode=client 时开放）
+Route::get('/auth/relay/login-url', [AuthController::class, 'relayLoginUrl']);
+Route::post('/auth/relay/invite', [AuthController::class, 'submitInvite']);
+Route::post('/auth/relay/complete', [AuthController::class, 'completeProfile']);
+
 // 手机验证码登录 API
 Route::post('/auth/phone/code', [AuthController::class, 'sendPhoneCode']);
 Route::post('/auth/phone/login', [AuthController::class, 'phoneLogin']);

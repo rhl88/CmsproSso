@@ -6,6 +6,12 @@ return [
     'access_domain' => '',
     'access_path' => 'sso',
 
+    // 快捷模式（standalone 独立站 / server 服务端 / client 客户端）
+    'quick_mode' => 'standalone',
+    'relay_server_url' => '',
+    'relay_client_id' => '',
+    'relay_client_secret' => '',
+
     // 微信登录配置
     'wechat_enabled' => '0',
     'wechat_mp_app_id' => '',

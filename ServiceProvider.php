@@ -81,6 +81,13 @@ class ServiceProvider extends BaseServiceProvider
                     ->middleware(['web', 'throttle:60,1'])
                     ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
                     ->group(base_path('app/Apps/CmsproSso/Routes/home-api.php'));
+
+                // 子域名模式：快捷模式服务端开放 API（跨站服务器调用，无 session/CSRF）
+                Route::domain($domain)
+                    ->prefix('api/cmspro/sso/oauth')
+                    ->middleware(['throttle:120,1'])
+                    ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
+                    ->group(base_path('app/Apps/CmsproSso/Routes/oauth-api.php'));
             }
         } elseif ($accessMode === 'path') {
             // 路径前缀模式：前台页面路由加 prefix
@@ -95,6 +102,12 @@ class ServiceProvider extends BaseServiceProvider
                 ->middleware(['web', 'throttle:60,1'])
                 ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
                 ->group(base_path('app/Apps/CmsproSso/Routes/home-api.php'));
+
+            // 快捷模式服务端开放 API（跨站服务器调用，无 session/CSRF，模式门禁在控制器内校验）
+            Route::prefix('api/cmspro/sso/oauth')
+                ->middleware(['throttle:120,1'])
+                ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
+                ->group(base_path('app/Apps/CmsproSso/Routes/oauth-api.php'));
         }
     }
 

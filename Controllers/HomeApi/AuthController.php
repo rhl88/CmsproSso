@@ -7,6 +7,7 @@ use App\Apps\CmsproSso\Models\LoginLog;
 use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
 use App\Apps\CmsproSso\Services\SmsService;
+use App\Apps\CmsproSso\Services\RelayClientService;
 use App\Apps\CmsproSso\Services\WechatOauthService;
 use App\Apps\CmsproSso\Services\QqOauthService;
 use App\Models\User;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
@@ -966,6 +968,11 @@ class AuthController extends Controller
     {
         $label = $this->platformUserLabel($platform);
 
+        // 快捷模式客户端：本地社交配置强制失效，社交登录一律走服务端中转
+        if ($this->settingService->isRelayClient()) {
+            return response()->json(['code' => 400, 'message' => '本站社交登录已由统一登录中转，请使用统一登录入口'], 400);
+        }
+
         // 平台未启用或未配置
         if ($this->settingService->get($platform . '_enabled', '0') !== '1') {
             return response()->json(['code' => 400, 'message' => $label . '登录未启用'], 400);
@@ -1565,6 +1572,115 @@ class AuthController extends Controller
             'message' => '绑定成功',
             'data'    => ['bound' => true],
         ]);
+    }
+
+    /**
+     * 快捷模式客户端：生成中转授权跳转地址（社交登录委托服务端）
+     *
+     * 登录页中转社交入口点击后调用，返回服务端 authorize 跳转地址。
+     * state 存 session（复用社交授权会话键，platform=relay），回调时校验；回调地址固定为
+     * /auth/relay/callback，与服务端客户端白名单中配置的地址一致。
+     */
+    public function relayLoginUrl(Request $request): JsonResponse
+    {
+        $relay = app(RelayClientService::class);
+        if (!$relay->isConfigured()) {
+            return response()->json(['code' => 400, 'message' => '快捷模式客户端未配置，请联系管理员'], 400);
+        }
+
+        $platform = trim((string) $request->input('platform', ''));
+        if ($platform !== '' && !in_array($platform, array_column($relay->platforms(), 'platform'), true)) {
+            return response()->json(['code' => 400, 'message' => '该登录方式未在服务端启用'], 400);
+        }
+
+        $state = md5(uniqid((string) mt_rand(), true));
+        $request->session()->put($this->sessionStateKey('relay'), $state);
+        $request->session()->put($this->sessionRedirectKey('relay'), trim((string) $request->input('redirect', '')));
+
+        return response()->json([
+            'code'    => 0,
+            'message' => 'ok',
+            'data'    => ['url' => $relay->authorizeUrl($platform, $state)],
+        ]);
+    }
+
+    /**
+     * 快捷模式客户端：服务端授权回调（浏览器跳转）
+     *
+     * 流程：校验 state（防 CSRF）→ 授权码换访问令牌 → 取服务端用户信息 →
+     * 以「sso + 服务端用户 id」为身份锚点查找/创建本地账号并登录。
+     * 邀请注册开启时，新用户先跳邀请码填写页（与其他社交平台一致）。
+     */
+    public function relayCallback(Request $request)
+    {
+        if (!$this->settingService->isRelayClient()) {
+            abort(404);
+        }
+
+        $relay = app(RelayClientService::class);
+
+        // state 校验（防 CSRF）：与会话中暂存值比对，一次性消费；跳转地址随会话取回继续透传
+        $expectedState = (string) $request->session()->get($this->sessionStateKey('relay'), '');
+        $state = (string) $request->query('state', '');
+        $redirect = (string) $request->session()->pull($this->sessionRedirectKey('relay'), '');
+
+        if ($expectedState === '' || $state === '' || !hash_equals($expectedState, $state)) {
+            return redirect(ShareService::frontUrl('/login'))->with('error', '授权状态校验失败，请重新登录');
+        }
+        $request->session()->forget($this->sessionStateKey('relay'));
+
+        $code = (string) $request->query('code', '');
+        if ($code === '') {
+            return redirect(ShareService::frontUrl('/login'))->with('error', '未获取到授权码，请重新登录');
+        }
+
+        // 授权码换访问令牌（服务器间调用服务端 token 端点）
+        $exchange = $relay->exchangeCode($code);
+        if (!$exchange['success']) {
+            Log::warning('快捷模式中转登录失败', ['step' => 'exchange', 'message' => $exchange['message']]);
+
+            return redirect(ShareService::frontUrl('/login'))->with('error', $exchange['message']);
+        }
+
+        // 凭访问令牌取服务端用户信息
+        $info = $relay->userinfo($exchange['access_token']);
+        if ($info === null) {
+            Log::warning('快捷模式中转登录失败', ['step' => 'userinfo']);
+
+            return redirect(ShareService::frontUrl('/login'))->with('error', '获取服务端用户信息失败，请重新登录');
+        }
+
+        // 身份锚点：服务端用户 id。无论中转哪个社交平台，同一服务端账号在本地始终对应同一账号
+        $data = [
+            'openid'        => 'sso_' . $info['id'],
+            'unionid'       => null,
+            'nickname'      => (string) ($info['nickname'] ?? ''),
+            'avatar'        => (string) ($info['avatar'] ?? ''),
+            'access_token'  => '',
+            'refresh_token' => '',
+            'platform'      => 'relay',
+            'raw_data'      => $info,
+        ];
+
+        // 邀请注册模式下：老用户直接登录，新用户先跳邀请码填写页
+        $existingUser = $this->findOauthUser($data['openid'], 'relay');
+        if ($existingUser === null && $this->settingService->get('invite_enabled', '0') === '1') {
+            $token = bin2hex(random_bytes(16));
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+
+            $inviteUrl = ShareService::frontUrl('/auth/relay/complete-invite?token=' . $token);
+            if ($redirect !== '') {
+                $inviteUrl .= '&redirect=' . urlencode($redirect);
+            }
+
+            return redirect($inviteUrl);
+        }
+
+        try {
+            return $this->loginOrCreateUser($request, $data, '', $redirect, 'relay');
+        } catch (\RuntimeException $e) {
+            return redirect(ShareService::frontUrl('/login'))->with('error', $e->getMessage());
+        }
     }
 
     /**

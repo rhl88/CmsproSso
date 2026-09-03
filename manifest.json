@@ -50,7 +50,11 @@
         "/sso/auth/wechat/callback": "微信授权回调",
         "/sso/auth/wechat/pc-success": "PC扫码登录成功页",
         "/sso/auth/qq/callback": "QQ授权回调",
-        "/sso/auth/qq/pc-success": "QQ扫码登录成功页"
+        "/sso/auth/qq/pc-success": "QQ扫码登录成功页",
+        "/sso/oauth/authorize": "快捷模式服务端授权端点",
+        "/sso/auth/relay/callback": "快捷模式客户端中转回调",
+        "/sso/auth/relay/complete-invite": "快捷模式客户端新用户邀请码填写页",
+        "/sso/auth/relay/complete": "快捷模式客户端新用户完善资料页"
     },
     "config_groups": [
         {
@@ -87,6 +91,45 @@
                     "type": "text",
                     "value": "sso",
                     "tips": "路径前缀模式下生效，如设置为 sso 则通过 /sso/ 访问。仅限字母数字和短横线"
+                }
+            ]
+        },
+        {
+            "name": "quick_mode_settings",
+            "title": "快捷模式设置",
+            "items": [
+                {
+                    "name": "quick_mode",
+                    "title": "站点角色",
+                    "type": "select",
+                    "value": "standalone",
+                    "options": [
+                        {"label": "独立站（默认）", "value": "standalone"},
+                        {"label": "服务端（提供中转）", "value": "server"},
+                        {"label": "客户端（委托中转）", "value": "client"}
+                    ],
+                    "tips": "服务端：本站社交登录可供客户端站点中转使用；客户端：本站本地社交配置强制失效，登录页社交入口改为服务端可中转平台"
+                },
+                {
+                    "name": "relay_server_url",
+                    "title": "服务端地址",
+                    "type": "text",
+                    "value": "",
+                    "tips": "客户端模式必填。服务端统一登录前台基础地址：子域名模式填域名地址（如 https://sso.example.com）；路径前缀模式填含前缀地址（如 http://www.example.com/sso）"
+                },
+                {
+                    "name": "relay_client_id",
+                    "title": "客户端 ID",
+                    "type": "text",
+                    "value": "",
+                    "tips": "客户端模式必填。服务端「客户端管理」发放的 client_id"
+                },
+                {
+                    "name": "relay_client_secret",
+                    "title": "客户端密钥",
+                    "type": "password",
+                    "value": "",
+                    "tips": "客户端模式必填。服务端「客户端管理」发放的 client_secret（仅创建/重置时展示一次）"
                 }
             ]
         },

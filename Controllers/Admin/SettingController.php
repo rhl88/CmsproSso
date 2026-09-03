@@ -43,6 +43,7 @@ class SettingController extends Controller
 
         return view('cmspro.sso::Admin.settings.index', [
             'configs'             => $configs,
+            'relay_callback_url'  => \App\Apps\CmsproSso\Services\ShareService::frontUrl('/auth/relay/callback'),
             'onlinepay_installed' => $onlinepay !== null,
             'onlinepay_enabled'   => $onlinepay !== null && $onlinepay->status === AppStatus::ENABLED,
         ]);

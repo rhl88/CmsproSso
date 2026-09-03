@@ -2,6 +2,6 @@
 
 # 版本控制
 .git/
-
+.git-commit-msg.tmp
 # 测试
 Tests/

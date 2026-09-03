@@ -528,6 +528,34 @@ layui.use(['form', 'jquery', 'layer'], function(){
         });
     }
 
+    // 快捷模式中转登录：点击后向服务端请求授权地址并整页跳转
+    $('.sso-relay-btn').on('click', function(){
+        var platform = $(this).data('platform');
+        var loadIdx = layer.load(2);
+        $.ajax({
+            url: window.SSO_API_BASE + '/auth/relay/login-url',
+            type: 'GET',
+            data: { platform: platform, redirect: redirect },
+            success: function(res){
+                layer.close(loadIdx);
+                if (res.code === 0) {
+                    window.location.href = res.data.url;
+                } else {
+                    layer.msg(res.message || '获取授权地址失败', {icon: 2});
+                }
+            },
+            error: function(xhr){
+                layer.close(loadIdx);
+                var msg = '请求失败';
+                try {
+                    var res = JSON.parse(xhr.responseText);
+                    if (res.message) msg = res.message;
+                } catch(e) {}
+                layer.msg(msg, {icon: 2});
+            }
+        });
+    });
+
     // 获取微信授权 URL
     function wechatLogin(device, callback){
         var loadIdx = layer.load(2);

@@ -126,6 +126,15 @@ class AuthController extends Controller
     }
 
     /**
+     * 快捷模式中转回调（页面转发给 HomeApi 处理）
+     */
+    public function relayCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->relayCallback($request);
+    }
+
+    /**
      * PC 扫码登录成功提示页
      */
     public function pcSuccessForm()
@@ -160,7 +169,7 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/login'));
         }
 
-        $platform = str_contains($request->path(), 'qq') ? 'qq' : 'wechat';
+        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
 
         return view('cmspro.sso::Home.auth.complete', [
             'user'     => $user,

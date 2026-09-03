@@ -1,6 +1,6 @@
 @extends('cmspro.sso::layouts.home')
 
-@php $platform = $platform ?? 'wechat'; $label = $platform === 'qq' ? 'QQ' : '微信'; @endphp
+@php $platform = $platform ?? 'wechat'; $label = $platform === 'qq' ? 'QQ' : ($platform === 'relay' ? '统一登录' : '微信'); @endphp
 
 @section('title', '完善资料')
 

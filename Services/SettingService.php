@@ -38,6 +38,37 @@ class SettingService
     ];
 
     /**
+     * 快捷模式取值
+     */
+    public const QUICK_MODES = ['standalone', 'server', 'client'];
+
+    /**
+     * 获取快捷模式（standalone 独立站 / server 服务端 / client 客户端，非法值回退 standalone）
+     */
+    public function getQuickMode(): string
+    {
+        $mode = $this->get('quick_mode', 'standalone');
+
+        return in_array($mode, self::QUICK_MODES, true) ? $mode : 'standalone';
+    }
+
+    /**
+     * 当前站点是否为快捷模式服务端（对外提供统一登录中转）
+     */
+    public function isRelayServer(): bool
+    {
+        return $this->getQuickMode() === 'server';
+    }
+
+    /**
+     * 当前站点是否为快捷模式客户端（社交登录委托中转服务端）
+     */
+    public function isRelayClient(): bool
+    {
+        return $this->getQuickMode() === 'client';
+    }
+
+    /**
      * 读取配置值
      */
     public function get(string $key, string $default = ''): string

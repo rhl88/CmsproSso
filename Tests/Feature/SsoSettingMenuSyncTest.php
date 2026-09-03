@@ -118,6 +118,31 @@ class SsoSettingMenuSyncTest extends TestCase
         $this->assertMenuStatus(1, '站点角色为服务端时重装后菜单应保持可见');
     }
 
+    public function test_客户端模式下启用社交登录不校验本地凭证(): void
+    {
+        // 客户端模式：微信/QQ 开关开启但未配置本地凭证，应保存成功
+        $payload = [
+            'quick_mode'       => 'client',
+            'relay_server_url' => 'https://sso.example.com',
+            'wechat_enabled'   => '1',
+            'qq_enabled'       => '1',
+        ];
+
+        $this->actingAs($this->admin, 'admin')
+            ->putJson('/admin/cmspro/sso/api/settings', $payload)
+            ->assertOk()
+            ->assertJson(['code' => 0]);
+
+        $this->assertDatabaseHas('config_items', ['code' => 'app_cmspro_sso_wechat_enabled', 'value' => '1']);
+        $this->assertDatabaseHas('config_items', ['code' => 'app_cmspro_sso_qq_enabled', 'value' => '1']);
+
+        // 对照：独立站模式下同样请求应被拦截（启用开关必须配置凭证）
+        $payload['quick_mode'] = 'standalone';
+        $this->actingAs($this->admin, 'admin')
+            ->putJson('/admin/cmspro/sso/api/settings', $payload)
+            ->assertStatus(400);
+    }
+
     public function test_非法站点角色返回400(): void
     {
         $this->actingAs($this->admin, 'admin')

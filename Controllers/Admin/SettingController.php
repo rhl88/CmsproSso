@@ -100,8 +100,8 @@ class SettingController extends Controller
             return response()->json(['code' => 400, 'message' => '子域名模式必须填写绑定域名'], 400);
         }
 
-        // 微信登录启用时校验配置
-        if (($data['wechat_enabled'] ?? '0') === '1') {
+        // 微信登录启用时校验配置（客户端模式下社交登录走服务端中转，无需本地凭证）
+        if (($data['wechat_enabled'] ?? '0') === '1' && $quickMode !== 'client') {
             if (empty(trim((string) ($data['wechat_mp_app_id'] ?? '')))) {
                 return response()->json(['code' => 400, 'message' => '启用微信登录必须填写公众号 AppID'], 400);
             }
@@ -110,8 +110,8 @@ class SettingController extends Controller
             }
         }
 
-        // QQ 登录启用时校验配置
-        if (($data['qq_enabled'] ?? '0') === '1') {
+        // QQ 登录启用时校验配置（客户端模式下社交登录走服务端中转，无需本地凭证）
+        if (($data['qq_enabled'] ?? '0') === '1' && $quickMode !== 'client') {
             if (empty(trim((string) ($data['qq_app_id'] ?? '')))) {
                 return response()->json(['code' => 400, 'message' => '启用QQ登录必须填写 QQ互联 AppID'], 400);
             }
@@ -120,8 +120,8 @@ class SettingController extends Controller
             }
         }
 
-        // 网页授权外挂启用时校验外挂地址
-        if (($data['wechat_oauth_enabled'] ?? '0') === '1') {
+        // 网页授权外挂启用时校验外挂地址（客户端模式下无需本地外挂配置）
+        if (($data['wechat_oauth_enabled'] ?? '0') === '1' && $quickMode !== 'client') {
             $oauthUrl = trim((string) ($data['wechat_oauth_url'] ?? ''));
             if ($oauthUrl === '' || filter_var($oauthUrl, FILTER_VALIDATE_URL) === false) {
                 return response()->json(['code' => 400, 'message' => '启用网页授权外挂必须填写有效的外挂地址'], 400);

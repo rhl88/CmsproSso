@@ -246,7 +246,7 @@
                                     <div class="layui-form-mid layui-word-aux">开启后前台登录页显示微信登录入口</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="wechat-appid-item">
                                 <label class="layui-form-label">公众号 AppID</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="wechat_mp_app_id" value="{{ $configs['wechat_mp_app_id'] ?? '' }}"
@@ -254,7 +254,7 @@
                                     <div class="layui-form-mid layui-word-aux">微信公众平台的 AppID，用于网页授权登录</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="wechat-secret-item">
                                 <label class="layui-form-label">公众号 AppSecret</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
@@ -262,7 +262,7 @@
                                     <div class="layui-form-mid layui-word-aux">微信公众平台的 AppSecret，用于 code 换取 openid</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="wechat-oauth-item">
                                 <label class="layui-form-label">网页授权外挂</label>
                                 <div class="layui-input-block">
                                     <input type="checkbox" name="wechat_oauth_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="wechat_oauth_enabled"
@@ -294,7 +294,7 @@
                                     <div class="layui-form-mid layui-word-aux">开启后前台登录页显示QQ登录入口</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="qq-mode-item">
                                 <label class="layui-form-label">功能选项</label>
                                 <div class="layui-input-block">
                                     <div style="width: 200px;">
@@ -306,7 +306,7 @@
                                     <div class="layui-form-mid layui-word-aux">QQ扫码登录：PC 端展示二维码，需使用QQ手机版扫一扫登录；QQ网页登录（默认）：跳转 QQ互联 OAuth2.0 认证页授权登录</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="qq-appid-item">
                                 <label class="layui-form-label">QQ互联 AppID</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="qq_app_id" value="{{ $configs['qq_app_id'] ?? '' }}"
@@ -314,7 +314,7 @@
                                     <div class="layui-form-mid layui-word-aux">QQ互联开放平台的应用 AppID，用于网页授权登录</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="qq-appkey-item">
                                 <label class="layui-form-label">QQ互联 AppKey</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
@@ -322,7 +322,7 @@
                                     <div class="layui-form-mid layui-word-aux">QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid</div>
                                 </div>
                             </div>
-                            <div class="layui-form-item">
+                            <div class="layui-form-item" id="qq-callback-item">
                                 <label class="layui-form-label"></label>
                                 <div class="layui-input-block">
                                     <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
@@ -527,6 +527,15 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     function toggleQuickModeFields(mode) {
         $('#quick-mode-server-item').toggle(mode === 'server');
         $('#relay-server-url-item, #relay-client-id-item, #relay-client-secret-item, #relay-callback-item').toggle(mode === 'client');
+        // 客户端模式下本地社交登录走服务端中转，微信/QQ 仅保留启用开关，隐藏本地凭证配置
+        var isClient = (mode === 'client');
+        $('#wechat-appid-item, #wechat-secret-item, #wechat-oauth-item, #qq-mode-item, #qq-appid-item, #qq-appkey-item, #qq-callback-item').toggle(!isClient);
+        if (isClient) {
+            $('#wechat_oauth_url_row').hide();
+        } else {
+            // 恢复网页授权外挂联动显隐（外挂开关关闭时隐藏）
+            $('#wechat_oauth_url_row').toggle($('input[name="wechat_oauth_enabled"]').is(':checked'));
+        }
     }
 
     form.on('select(quick_mode)', function(data) {

@@ -77,7 +77,7 @@
                             <div class="layui-form-item" id="relay-client-secret-item" style="display:none;">
                                 <label class="layui-form-label">客户端密钥</label>
                                 <div class="layui-input-block">
-                                    <input type="password" name="relay_client_secret" value="{{ $configs['relay_client_secret'] ?? '' }}"
+                                    <input type="text" name="relay_client_secret" value="{{ $configs['relay_client_secret'] ?? '' }}"
                                            placeholder="请输入 client_secret" class="layui-input">
                                     <div class="layui-form-mid layui-word-aux">服务端「客户端管理」发放的 client_secret（仅创建/重置时展示一次）</div>
                                 </div>

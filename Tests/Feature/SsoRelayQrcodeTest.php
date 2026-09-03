@@ -75,7 +75,7 @@ class SsoRelayQrcodeTest extends TestCase
         ])->assertStatus(400)->assertJsonPath('message', '该登录方式未在服务端启用');
     }
 
-    public function test_创建扫码会话返回授权页地址与会话ID(): void
+    public function test_创建扫码会话返回社交授权地址与会话ID(): void
     {
         $this->setConfig('quick_mode', 'server');
         $this->setConfig('qq_enabled', '1');
@@ -93,113 +93,160 @@ class SsoRelayQrcodeTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $sessionId);
         $this->assertSame(600, $response->json('data.expires_in'));
 
-        // 二维码内容为服务端 authorize 授权页地址（state 携带扫码会话）
+        // 二维码内容为服务端 QQ 互联授权地址（手机扫码直接打开授权确认页，无需先登录服务端）
         $qrcodeUrl = (string) $response->json('data.qrcode_url');
-        $this->assertStringContainsString('/oauth/authorize?', $qrcodeUrl);
+        $this->assertStringStartsWith('https://graph.qq.com/oauth2.0/authorize?', $qrcodeUrl);
         parse_str((string) parse_url($qrcodeUrl, PHP_URL_QUERY), $query);
-        $this->assertSame($this->client->client_id, $query['client_id']);
-        $this->assertSame('https://app.example.com/auth/relay/callback', $query['redirect_uri']);
-        $this->assertSame('code', $query['response_type']);
-        $this->assertSame('qq', $query['platform']);
+        $this->assertSame('101234567', $query['client_id']);
         $this->assertSame('relay_qr:' . $sessionId, $query['state']);
+        // 回调地址指向服务端 QQ 社交回调端点（host 依环境而定，仅校验路径）
+        $this->assertStringEndsWith('/sso/auth/qq/callback', $query['redirect_uri']);
 
-        // 会话已登记（保存回调地址，供 authorize 回调校验）
+        // 会话已登记（保存客户端 ID 与回调地址，供社交回调签发授权码）
         $session = Cache::get('cmspro_sso_relay_qr:' . $sessionId);
+        $this->assertSame($this->client->client_id, $session['client_id'] ?? null);
         $this->assertSame('https://app.example.com/auth/relay/callback', $session['redirect_uri'] ?? null);
     }
 
-    // ---------------------------------------------------------------- 2. 服务端 authorize 与扫码会话联动
+    public function test_创建扫码会话微信返回微信授权地址(): void
+    {
+        $this->setConfig('quick_mode', 'server');
+        $this->setConfig('wechat_enabled', '1');
+        $this->setConfig('wechat_mp_app_id', 'wx_test_app_id');
+        $this->setConfig('wechat_mp_app_secret', 'test_secret');
+        $this->createClient();
 
-    public function test_手机扫码授权写入会话结果并跳提示页(): void
+        $response = $this->postJson('/api/cmspro/sso/oauth/relay-qrcode', [
+            'client_id'    => $this->client->client_id,
+            'redirect_uri' => 'https://app.example.com/auth/relay/callback',
+            'platform'     => 'wechat',
+        ])->assertOk()->assertJsonPath('code', 0);
+
+        $sessionId = (string) $response->json('data.session_id');
+        $qrcodeUrl = (string) $response->json('data.qrcode_url');
+        $this->assertStringStartsWith('https://open.weixin.qq.com/connect/oauth2/authorize?', $qrcodeUrl);
+        parse_str((string) parse_url($qrcodeUrl, PHP_URL_QUERY), $query);
+        $this->assertSame('wx_test_app_id', $query['appid']);
+        $this->assertSame('snsapi_userinfo', $query['scope']);
+        $this->assertSame('relay_qr:' . $sessionId, $query['state']);
+        $this->assertStringEndsWith('/sso/auth/wechat/callback', $query['redirect_uri']);
+    }
+
+    public function test_创建扫码会话平台无效返回400(): void
     {
         $this->setConfig('quick_mode', 'server');
         $this->setConfig('qq_enabled', '1');
         $this->setConfig('qq_app_id', '101234567');
         $this->setConfig('qq_app_key', 'test_qq_app_key');
-        $user = $this->createUser();
         $this->createClient();
 
-        // 1. 创建扫码会话
+        // 空 platform（未指定登录平台）
+        $this->postJson('/api/cmspro/sso/oauth/relay-qrcode', [
+            'client_id'    => $this->client->client_id,
+            'redirect_uri' => 'https://app.example.com/auth/relay/callback',
+        ])->assertStatus(400)->assertJsonPath('message', '无效的平台');
+
+        // 未知平台（如 github，服务端未实现）
+        $this->postJson('/api/cmspro/sso/oauth/relay-qrcode', [
+            'client_id'    => $this->client->client_id,
+            'redirect_uri' => 'https://app.example.com/auth/relay/callback',
+            'platform'     => 'github',
+        ])->assertStatus(400);
+    }
+
+    // ---------------------------------------------------------------- 2. 服务端社交回调与扫码会话联动
+
+    public function test_手机扫码社交授权写入会话结果并跳提示页(): void
+    {
+        $this->setConfig('quick_mode', 'server');
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
+        $this->createClient();
         $sessionId = $this->createQrSession('qq');
 
-        // 2. 手机端打开二维码内容（服务端 authorize，已登录）→ 跳提示页而非回跳客户端
-        $authorizeQuery = [
-            'client_id'     => $this->client->client_id,
-            'redirect_uri'  => 'https://app.example.com/auth/relay/callback',
-            'response_type' => 'code',
-            'platform'      => 'qq',
-            'state'         => 'relay_qr:' . $sessionId,
-        ];
-        $response = $this->actingAs($user, 'web')
-            ->get('/sso/oauth/authorize?' . http_build_query($authorizeQuery))
-            ->assertRedirect();
+        // 1. 手机扫码授权完成，QQ 互联回调服务端社交回调端点（code + state=relay_qr:{session_id}）
+        $this->fakeQqOauthCode('qq_openid_qr_1', '扫码用户', 'https://a.b/qr.png');
+        $response = $this->get('/sso/auth/qq/callback?' . http_build_query([
+            'code'  => 'QQ_AUTH_CODE_1',
+            'state' => 'relay_qr:' . $sessionId,
+        ]))->assertRedirect();
 
+        // 2. 手机端跳提示页（非回跳客户端）
         $location = (string) $response->headers->get('Location');
         $this->assertStringContainsString('/auth/relay/pc-success', $location);
         $this->assertStringNotContainsString('app.example.com', $location);
 
-        // 3. 授权码已签发落库
+        // 3. 服务端用户已解析/创建（社交 openid 绑定）
+        $this->assertSame(1, UserThirdParty::where('platform', 'qq')->where('open_id', 'qq_openid_qr_1')->count());
+
+        // 4. 授权码已签发（归属客户端 + 回调地址为客户端 relay callback）
         $this->assertSame(1, AuthCode::count());
         $authCode = AuthCode::first();
         $this->assertSame($this->client->client_id, $authCode->client_id);
-        $this->assertSame($user->id, (int) $authCode->user_id);
-        $this->assertSame('qq', $authCode->platform);
         $this->assertSame('https://app.example.com/auth/relay/callback', $authCode->redirect_uri);
+        $this->assertSame('qq', $authCode->platform);
 
-        // 4. PC 端轮询取回授权码（confirmed）
+        // 5. PC 端轮询取回授权码（confirmed）
         $this->getJson('/api/cmspro/sso/oauth/relay-status?session_id=' . $sessionId)
             ->assertOk()
             ->assertJsonPath('data.status', 'confirmed')
             ->assertJsonPath('data.code', $authCode->code)
             ->assertJsonPath('data.platform', 'qq');
 
-        // 5. 结果一次性消费，再次轮询回到等待态
+        // 6. 结果一次性消费，再次轮询回到等待态
         $this->getJson('/api/cmspro/sso/oauth/relay-status?session_id=' . $sessionId)
             ->assertOk()
             ->assertJsonPath('data.status', 'waiting');
     }
 
-    public function test_扫码授权回调地址与会话不一致返回400(): void
+    public function test_手机扫码社交授权老用户绑定不重复建号(): void
     {
         $this->setConfig('quick_mode', 'server');
         $this->setConfig('qq_enabled', '1');
         $this->setConfig('qq_app_id', '101234567');
         $this->setConfig('qq_app_key', 'test_qq_app_key');
-        $user = $this->createUser();
+        $existing = $this->createUser();
+        UserThirdParty::create([
+            'user_id'  => $existing->id,
+            'platform' => 'qq',
+            'open_id'  => 'qq_openid_qr_1',
+        ]);
         $this->createClient();
         $sessionId = $this->createQrSession('qq');
 
-        // 二维码内容被篡改回调地址（与会话登记不符）
-        $this->actingAs($user, 'web')
-            ->get('/sso/oauth/authorize?' . http_build_query([
-                'client_id'     => $this->client->client_id,
-                'redirect_uri'  => 'https://evil.example.com/callback',
-                'response_type' => 'code',
-                'platform'      => 'qq',
-                'state'         => 'relay_qr:' . $sessionId,
-            ]))
-            ->assertStatus(400);
+        $this->fakeQqOauthCode('qq_openid_qr_1', '扫码用户', 'https://a.b/qr.png');
+        $this->get('/sso/auth/qq/callback?' . http_build_query([
+            'code'  => 'QQ_AUTH_CODE_1',
+            'state' => 'relay_qr:' . $sessionId,
+        ]))->assertRedirect();
 
-        // 未写入扫码结果
-        $this->getJson('/api/cmspro/sso/oauth/relay-status?session_id=' . $sessionId)
-            ->assertOk()
-            ->assertJsonPath('data.status', 'waiting');
+        // 老用户：不重复建号，授权码归属已有用户
+        $this->assertSame(1, User::count());
+        $this->assertSame(1, AuthCode::count());
+        $this->assertSame($existing->id, (int) AuthCode::first()->user_id);
     }
 
-    public function test_伪造扫码会话授权返回400(): void
+    public function test_手机扫码社交授权会话无效不写结果(): void
     {
         $this->setConfig('quick_mode', 'server');
-        $user = $this->createUser();
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
         $this->createClient();
 
-        $this->actingAs($user, 'web')
-            ->get('/sso/oauth/authorize?' . http_build_query([
-                'client_id'     => $this->client->client_id,
-                'redirect_uri'  => 'https://app.example.com/auth/relay/callback',
-                'response_type' => 'code',
-                'state'         => 'relay_qr:' . str_repeat('a', 32),
-            ]))
-            ->assertStatus(400);
+        // 伪造会话 ID（服务端未登记）
+        $this->fakeQqOauthCode('qq_openid_qr_1', '扫码用户', 'https://a.b/qr.png');
+        $response = $this->get('/sso/auth/qq/callback?' . http_build_query([
+            'code'  => 'QQ_AUTH_CODE_1',
+            'state' => 'relay_qr:' . str_repeat('a', 32),
+        ]))->assertRedirect();
+
+        $this->assertStringContainsString('pc-success?result=failed', (string) $response->headers->get('Location'));
+
+        // 未建号、未签发授权码
+        $this->assertSame(0, AuthCode::count());
+        $this->assertSame(0, UserThirdParty::where('platform', 'qq')->count());
     }
 
     public function test_扫码会话无效轮询返回400(): void
@@ -396,6 +443,28 @@ class SsoRelayQrcodeTest extends TestCase
         ])->assertOk();
 
         return (string) $response->json('data.session_id');
+    }
+
+    /**
+     * 模拟 QQ 互联授权链路（code 换 access_token → 换 openid → 获取用户信息）
+     */
+    protected function fakeQqOauthCode(string $openid, string $nickname, string $avatar): void
+    {
+        Http::fake([
+            'graph.qq.com/oauth2.0/token*' => Http::response(
+                'access_token=QQ_TEST_AT&expires_in=7776000&refresh_token=QQ_TEST_RT',
+                200
+            ),
+            'graph.qq.com/oauth2.0/me*' => Http::response(
+                'callback( {"client_id":"101234567","openid":"' . $openid . '"} );',
+                200
+            ),
+            'graph.qq.com/user/get_user_info*' => Http::response([
+                'ret'            => 0,
+                'nickname'       => $nickname,
+                'figureurl_qq_2' => $avatar,
+            ]),
+        ]);
     }
 
     /**

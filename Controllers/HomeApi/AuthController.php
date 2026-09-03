@@ -8,6 +8,7 @@ use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
 use App\Apps\CmsproSso\Services\SmsService;
 use App\Apps\CmsproSso\Services\RelayClientService;
+use App\Apps\CmsproSso\Services\OAuthService;
 use App\Apps\CmsproSso\Services\WechatOauthService;
 use App\Apps\CmsproSso\Services\QqOauthService;
 use App\Models\User;
@@ -60,7 +61,8 @@ class AuthController extends Controller
 
     public function __construct(
         protected SettingService $settingService,
-        protected SmsService $smsService
+        protected SmsService $smsService,
+        protected OAuthService $oauthService
     ) {
     }
 
@@ -1093,8 +1095,12 @@ class AuthController extends Controller
         // 绑定 PC 扫码模式：state 存 Cache 绑定专用键（跨设备扫码，回调时在 bindPcOauthCallback 中消费取回目标用户）
         $isPcBindMode = false;
         $isPcMode = false;
+        // 中转扫码模式：state 以 relay_qr:{session_id} 标识（客户端站点 PC 扫码中转登录）
+        $isRelayQrMode = str_starts_with($state, 'relay_qr:');
 
-        if ($state !== '' && Cache::has(self::CACHE_BIND_STATE_PREFIX . $state)) {
+        if ($isRelayQrMode) {
+            // 中转扫码回调不做会话 state 校验（state 即扫码会话标识，防伪靠会话存在性）
+        } elseif ($state !== '' && Cache::has(self::CACHE_BIND_STATE_PREFIX . $state)) {
             $isBindMode = true;
             $isPcBindMode = true;
         } elseif ($isBindMode) {
@@ -1136,6 +1142,12 @@ class AuthController extends Controller
 
         if ($data === null) {
             abort(400, $label . '授权失败，未获取到 openid');
+        }
+
+        // 中转扫码模式（客户端站点 PC 扫码中转）：社交授权成功后不建服务端登录态，
+        // 而是向发起会话的客户端签发授权码写入扫码会话，手机端跳提示页、PC 端轮询取回
+        if ($isRelayQrMode) {
+            return $this->relayQrCallback($data, $platform, $state);
         }
 
         // 绑定模式：已登录用户发起绑定，校验通过 → 走绑定落库流程（不建立新登录态、不改变当前用户）
@@ -1206,6 +1218,55 @@ class AuthController extends Controller
         } catch (\RuntimeException $e) {
             abort(400, $e->getMessage() . '，请返回登录页重试');
         }
+    }
+
+    /**
+     * 中转扫码社交回调（客户端站点 PC 扫码中转登录）
+     *
+     * 二维码内容为服务端社交平台授权地址（state = relay_qr:{session_id}），手机扫码
+     * 授权确认后进入此处：按社交 openid 解析/创建服务端用户 → 向发起会话的客户端
+     * 签发 OAuth2 授权码写入扫码会话（PC 端轮询 relay-status 取回）→ 手机端跳提示页。
+     *
+     * 防伪：会话由服务端 relay-qrcode 端点登记（client_id + redirect_uri 白名单校验），
+     * 伪造的 session_id 无法取到会话内容，直接返回失败不写入结果。
+     *
+     * @param array $data 授权数据（openid/nickname/avatar/access_token 等）
+     * @param string $platform 平台标识（wechat/qq）
+     * @param string $state 扫码会话标识（relay_qr:{session_id}）
+     */
+    protected function relayQrCallback(array $data, string $platform, string $state)
+    {
+        $sessionId = substr($state, strlen('relay_qr:'));
+        $session = $this->oauthService->getRelayQrSession($sessionId);
+
+        // 会话无效或已过期：不写入结果，手机端展示失败态
+        if ($session === null || !isset($session['client_id'], $session['redirect_uri'])) {
+            return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
+        }
+
+        // 解析/创建服务端用户（绑定社交 openid，作为服务端身份承载）
+        try {
+            [$user, $isNew] = $this->resolveOrCreateUser($data, '', $platform);
+        } catch (\RuntimeException $e) {
+            Log::warning('中转扫码登录建号失败', ['platform' => $platform, 'message' => $e->getMessage()]);
+
+            return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
+        }
+
+        // 向发起会话的客户端签发授权码（回调地址为客户端 relay callback，与创建会话时登记一致）
+        $client = $this->oauthService->findEnabledClient((string) $session['client_id']);
+        if (!$client || !$this->oauthService->isRedirectUriAllowed($client, (string) $session['redirect_uri'])) {
+            return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
+        }
+
+        $code = $this->oauthService->issueAuthCode($client, $user, $platform, (string) $session['redirect_uri']);
+
+        $this->oauthService->putRelayQrResult($sessionId, [
+            'code'     => $code,
+            'platform' => $platform,
+        ]);
+
+        return redirect(ShareService::frontUrl('/auth/relay/pc-success'));
     }
 
     /**

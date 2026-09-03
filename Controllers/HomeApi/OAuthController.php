@@ -3,6 +3,9 @@
 namespace App\Apps\CmsproSso\Controllers\HomeApi;
 
 use App\Apps\CmsproSso\Services\OAuthService;
+use App\Apps\CmsproSso\Services\QqOauthService;
+use App\Apps\CmsproSso\Services\ShareService;
+use App\Apps\CmsproSso\Services\WechatOauthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -133,8 +136,9 @@ class OAuthController extends Controller
      * 创建中转扫码会话并返回社交授权地址（二维码内容）
      *
      * 客户端站点 PC 端发起扫码中转：校验客户端与回调地址白名单后登记会话，
-     * 返回可在客户端渲染为二维码的社交授权地址。扫码授权完成后服务端
-     * authorize 回调识别该会话，将授权码签发结果写入会话供轮询接口取回。
+     * 返回可在客户端渲染为二维码的服务端社交平台授权地址（微信网页授权/QQ 互联）。
+     * 手机扫码直接打开授权确认页（无需在服务端手动登录），授权后服务端社交回调
+     * 识别扫码会话签发授权码写入会话，客户端 PC 端轮询 relay-status 取回。
      */
     public function relayQrcode(Request $request): JsonResponse
     {
@@ -155,22 +159,31 @@ class OAuthController extends Controller
             return response()->json(['code' => 400, 'message' => '无效的客户端或回调地址'], 400);
         }
 
-        // 二维码内容：服务端 authorize 端点（浏览器跳转地址，手机扫码后打开授权页）
-        $authorizeUrl = rtrim($this->authorizeBaseUrl(), '/')
-            . '?' . http_build_query([
-                'client_id'     => $clientId,
-                'redirect_uri'  => $redirectUri,
-                'response_type' => 'code',
-                'platform'      => $platform,
-                'state'         => 'relay_qr:' . $sessionId,
-            ]);
+        // 二维码内容：服务端社交平台授权地址（state 携带扫码会话）。
+        // 手机扫码直接打开微信/QQ 授权确认页（无需在服务端手动登录），授权后回调服务端
+        // 社交回调端点，签发授权码写入扫码会话，客户端 PC 端轮询 relay-status 取回。
+        $platforms = [
+            'wechat' => WechatOauthService::class,
+            'qq'     => QqOauthService::class,
+        ];
+
+        if ($platform === '' || !isset($platforms[$platform])) {
+            return response()->json(['code' => 400, 'message' => '无效的平台'], 400);
+        }
+
+        $state = 'relay_qr:' . $sessionId;
+        $callbackUrl = ShareService::frontUrl('/auth/' . $platform . '/callback');
+        $buildResult = app($platforms[$platform])->buildOauthRedirectUrl($callbackUrl, $state);
+        if (!$buildResult['success']) {
+            return response()->json(['code' => 400, 'message' => $buildResult['message']], 400);
+        }
 
         return response()->json([
             'code'    => 0,
             'message' => 'ok',
             'data'    => [
                 'session_id'   => $sessionId,
-                'qrcode_url'   => $authorizeUrl,
+                'qrcode_url'   => $buildResult['url'],
                 'expires_in'   => $this->oauthService::RELAY_QR_TTL,
             ],
         ]);
@@ -220,14 +233,6 @@ class OAuthController extends Controller
                 'platform'     => (string) ($result['platform'] ?? ''),
             ],
         ]);
-    }
-
-    /**
-     * 服务端 authorize 端点基础地址（scheme://host[:port] + 前台路径前缀）
-     */
-    protected function authorizeBaseUrl(): string
-    {
-        return \App\Apps\CmsproSso\Services\ShareService::frontUrl('/oauth/authorize');
     }
 
     /**

@@ -259,8 +259,8 @@ class OAuthService
     /**
      * 中转扫码会话 Cache 键前缀
      *
-     * 会话内容为客户端 authorize 回调地址（redirect_uri），创建时校验白名单；
-     * 社交授权完成后据此跳回客户端并附带授权码（PC 轮询端凭会话 ID 换取登录结果）。
+     * 会话内容为客户端 client_id 与 authorize 回调地址（redirect_uri），创建时校验白名单；
+     * 社交授权回调据此签发授权码写入会话，客户端 PC 端凭会话 ID 轮询取回登录结果。
      */
     public const RELAY_QR_SESSION_PREFIX = 'cmspro_sso_relay_qr:';
 
@@ -281,6 +281,7 @@ class OAuthService
 
         $sessionId = bin2hex(random_bytes(16));
         Cache::put(self::RELAY_QR_SESSION_PREFIX . $sessionId, [
+            'client_id'    => $client->client_id,
             'redirect_uri' => $redirectUri,
         ], self::RELAY_QR_TTL);
 

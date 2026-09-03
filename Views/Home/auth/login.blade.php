@@ -137,9 +137,13 @@ layui.use(['form', 'jquery', 'layer'], function(){
             return;
         }
 
-        // PC 端：弹出二维码扫码
+        // PC 端：弹出二维码扫码（中转模式整页跳转服务端授权页）
         if (!isMobile) {
-            wechatLogin('pc', function(url, state){
+            wechatLogin('pc', function(url, state, mode){
+                if (mode === 'relay') {
+                    window.location.href = url;
+                    return;
+                }
                 openQrModal(url, state, 'wechat');
             });
             return;
@@ -158,7 +162,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
     $('#qq-login-btn').on('click', function(){
         var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         if (qqMode === 'qrcode' && !isMobile) {
-            qqLogin('pc', function(url, state){
+            qqLogin('pc', function(url, state, mode){
+                if (mode === 'relay') {
+                    window.location.href = url;
+                    return;
+                }
                 openQrModal(url, state, 'qq');
             });
         } else {
@@ -566,7 +574,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
-                    callback(res.data.url, res.data.state);
+                    callback(res.data.url, res.data.state, res.data.mode);
                 } else {
                     layer.msg(res.message || '获取微信授权失败', {icon: 2});
                 }
@@ -593,7 +601,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
-                    callback(res.data.url, res.data.state);
+                    callback(res.data.url, res.data.state, res.data.mode);
                 } else {
                     layer.msg(res.message || '获取QQ授权失败', {icon: 2});
                 }

@@ -379,7 +379,7 @@ class SsoOAuthRelayTest extends TestCase
         $response->assertSessionMissing('cmspro_sso_relay_oauth_state');
     }
 
-    public function test_客户端模式本地社交登录失效(): void
+    public function test_客户端模式微信登录委托服务端中转(): void
     {
         $this->setConfig('quick_mode', 'client');
         $this->setConfig('relay_server_url', 'https://sso.example.com');
@@ -389,9 +389,26 @@ class SsoOAuthRelayTest extends TestCase
         $this->setConfig('wechat_mp_app_id', 'wx_test_app_id');
         $this->setConfig('wechat_mp_app_secret', 'wx_test_app_secret');
 
-        $this->getJson('/api/cmspro/sso/auth/wechat/login-url')
-            ->assertStatus(400)
-            ->assertJsonPath('message', '本站社交登录已由统一登录中转，请使用统一登录入口');
+        // 服务端 platforms 接口模拟（含微信平台）
+        Http::fake([
+            'sso.example.com/api/cmspro/sso/oauth/platforms*' => Http::response([
+                'code' => 0,
+                'data' => ['platforms' => [['platform' => 'wechat', 'label' => '微信']]],
+            ]),
+        ]);
+
+        // 客户端模式下点击微信登录：返回服务端中转授权地址（而非本地授权）
+        $response = $this->getJson('/api/cmspro/sso/auth/wechat/login-url')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.mode', 'relay');
+
+        $url = (string) $response->json('data.url');
+        $this->assertStringStartsWith('https://sso.example.com/oauth/authorize?', $url);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $this->assertSame('sso_test_client', $query['client_id']);
+        $this->assertSame('wechat', $query['platform']);
+        $response->assertSessionHas('cmspro_sso_relay_oauth_state', (string) $query['state']);
     }
 
     // ---------------------------------------------------------------- 辅助方法

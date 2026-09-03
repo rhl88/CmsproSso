@@ -968,9 +968,9 @@ class AuthController extends Controller
     {
         $label = $this->platformUserLabel($platform);
 
-        // 快捷模式客户端：本地社交配置强制失效，社交登录一律走服务端中转
+        // 快捷模式客户端：本地社交配置失效，微信/QQ 登录统一委托服务端中转
         if ($this->settingService->isRelayClient()) {
-            return response()->json(['code' => 400, 'message' => '本站社交登录已由统一登录中转，请使用统一登录入口'], 400);
+            return $this->doRelayLoginUrl($request, $platform);
         }
 
         // 平台未启用或未配置
@@ -1578,17 +1578,27 @@ class AuthController extends Controller
      * 快捷模式客户端：生成中转授权跳转地址（社交登录委托服务端）
      *
      * 登录页中转社交入口点击后调用，返回服务端 authorize 跳转地址。
-     * state 存 session（复用社交授权会话键，platform=relay），回调时校验；回调地址固定为
-     * /auth/relay/callback，与服务端客户端白名单中配置的地址一致。
      */
     public function relayLoginUrl(Request $request): JsonResponse
+    {
+        return $this->doRelayLoginUrl($request, (string) $request->input('platform', ''));
+    }
+
+    /**
+     * 生成中转授权跳转地址（登录页中转入口与微信/QQ 登录入口客户端模式共用）
+     *
+     * state 存 session（复用社交授权会话键，platform=relay），回调时校验；回调地址固定为
+     * /auth/relay/callback，与服务端客户端白名单中配置的地址一致。客户端模式下微信/QQ
+     * 登录按钮也走此流程（整页跳转服务端授权页，授权完成后 redirect 回本站建立登录态）。
+     */
+    protected function doRelayLoginUrl(Request $request, string $platform): JsonResponse
     {
         $relay = app(RelayClientService::class);
         if (!$relay->isConfigured()) {
             return response()->json(['code' => 400, 'message' => '快捷模式客户端未配置，请联系管理员'], 400);
         }
 
-        $platform = trim((string) $request->input('platform', ''));
+        $platform = trim($platform);
         if ($platform !== '' && !in_array($platform, array_column($relay->platforms(), 'platform'), true)) {
             return response()->json(['code' => 400, 'message' => '该登录方式未在服务端启用'], 400);
         }
@@ -1600,7 +1610,7 @@ class AuthController extends Controller
         return response()->json([
             'code'    => 0,
             'message' => 'ok',
-            'data'    => ['url' => $relay->authorizeUrl($platform, $state)],
+            'data'    => ['url' => $relay->authorizeUrl($platform, $state), 'mode' => 'relay'],
         ]);
     }
 

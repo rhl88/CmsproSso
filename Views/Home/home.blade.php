@@ -187,8 +187,9 @@ layui.use(['jquery', 'layer'], function(){
                         layer.close(bindModalIdx);
                         bindModalIdx = null;
                     }
-                    // PC 扫码绑定：弹出二维码层；移动端：跳转授权（绑定后自动回跳首页）
-                    if (res.data.device === 'pc') {
+                    // 展示形态由后端 display 决策：qrcode=内嵌二维码扫码，redirect=跳转授权
+                    // （QQ 依后台 qq_mode 配置，微信 PC 固定扫码）
+                    if (res.data.display === 'qrcode') {
                         openBindQrModal(res.data.url, res.data.state, platform);
                     } else {
                         window.location.href = res.data.url;

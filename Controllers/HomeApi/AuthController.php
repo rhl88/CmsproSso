@@ -906,6 +906,16 @@ class AuthController extends Controller
             $request->session()->put($this->sessionBindStateKey($platform), $state);
         }
 
+        // 展示形态由后端统一决策（前端按 display 渲染，避免各视图重复实现 qq_mode 判断）：
+        //   移动端一律跳转授权；PC 端微信固定内嵌扫码（与登录页一致）；
+        //   PC 端 QQ 依后台 qq_mode 配置（qrcode=内嵌二维码，web/默认=跳转QQ授权页）。
+        $display = 'redirect';
+        if ($device === 'pc') {
+            if ($platform === 'wechat' || $this->settingService->get('qq_mode', 'web') === 'qrcode') {
+                $display = 'qrcode';
+            }
+        }
+
         // 微信外挂模式：构建跳转到外挂脚本的 URL（QQ 无外挂模式）
         if ($platform === 'wechat' && $this->settingService->isWechatOauthProxyEnabled()) {
             $proxyUrl = $this->settingService->getWechatOauthUrl();
@@ -920,7 +930,7 @@ class AuthController extends Controller
             return response()->json([
                 'code'    => 0,
                 'message' => 'ok',
-                'data'    => ['url' => $url, 'mode' => 'proxy', 'state' => $state, 'device' => $device],
+                'data'    => ['url' => $url, 'mode' => 'proxy', 'state' => $state, 'device' => $device, 'display' => $display],
             ]);
         }
 
@@ -937,7 +947,7 @@ class AuthController extends Controller
         return response()->json([
             'code'    => 0,
             'message' => 'ok',
-            'data'    => ['url' => $result['url'], 'mode' => 'native', 'state' => $state, 'device' => $device],
+            'data'    => ['url' => $result['url'], 'mode' => 'native', 'state' => $state, 'device' => $device, 'display' => $display],
         ]);
     }
 

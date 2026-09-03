@@ -99,6 +99,81 @@ class SsoPcBindTest extends TestCase
             ->assertJsonPath('message', '已绑定QQ用户，请先解绑');
     }
 
+    // ---------------------------------------------------------------- 1.5 绑定展示形态（display 由后端统一决策）
+
+    public function test_PC绑定display_qq_mode为qrcode时返回内嵌扫码(): void
+    {
+        $user = $this->createUser();
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
+        $this->setConfig('qq_mode', 'qrcode');
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/cmspro/sso/auth/qq/bind-url?device=pc')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.display', 'qrcode');
+    }
+
+    public function test_PC绑定display_qq_mode为web时返回跳转授权(): void
+    {
+        $user = $this->createUser();
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
+        $this->setConfig('qq_mode', 'web');
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/cmspro/sso/auth/qq/bind-url?device=pc')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.display', 'redirect');
+    }
+
+    public function test_PC绑定display_未配置qq_mode时默认跳转授权(): void
+    {
+        $user = $this->createUser();
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/cmspro/sso/auth/qq/bind-url?device=pc')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.display', 'redirect');
+    }
+
+    public function test_PC绑定display_微信固定返回内嵌扫码(): void
+    {
+        $user = $this->createUser();
+        $this->setConfig('wechat_enabled', '1');
+        $this->setConfig('wechat_mp_app_id', 'wx_test_app_id');
+        $this->setConfig('wechat_mp_app_secret', 'wx_test_app_secret');
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/cmspro/sso/auth/wechat/bind-url?device=pc')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.display', 'qrcode');
+    }
+
+    public function test_非pc绑定display固定返回跳转授权(): void
+    {
+        $user = $this->createUser();
+        $this->setConfig('qq_enabled', '1');
+        $this->setConfig('qq_app_id', '101234567');
+        $this->setConfig('qq_app_key', 'test_qq_app_key');
+        $this->setConfig('qq_mode', 'qrcode');
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/cmspro/sso/auth/qq/bind-url')
+            ->assertOk()
+            ->assertJsonPath('code', 0)
+            ->assertJsonPath('data.display', 'redirect');
+    }
+
     // ---------------------------------------------------------------- 2. 扫码回调绑定落库
 
     public function test_PC扫码回调绑定成功落到发起用户且写bound结果(): void

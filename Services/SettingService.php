@@ -20,6 +20,7 @@ class SettingService
      * 允许保存的配置项白名单
      */
     public const ALLOWED_KEYS = [
+        'quick_mode', 'relay_server_url', 'relay_client_id', 'relay_client_secret',
         'access_mode', 'access_domain', 'access_path',
         'wechat_enabled', 'wechat_mp_app_id', 'wechat_mp_app_secret',
         'wechat_oauth_enabled', 'wechat_oauth_url',

@@ -4,6 +4,8 @@ namespace App\Apps\CmsproSso\Controllers\Admin;
 
 use App\Apps\CmsproSso\Services\SettingService;
 use App\Enums\AppStatus;
+use App\Enums\Status;
+use App\Models\AdminMenu;
 use App\Models\AppModel;
 use App\Models\ConfigGroup;
 use App\Models\ConfigItem;
@@ -77,6 +79,17 @@ class SettingController extends Controller
     public function update(Request $request)
     {
         $data = $request->only(SettingService::ALLOWED_KEYS);
+
+        // 站点角色校验
+        $quickMode = (string) ($data['quick_mode'] ?? '');
+        if ($quickMode !== '' && !in_array($quickMode, SettingService::QUICK_MODES, true)) {
+            return response()->json(['code' => 400, 'message' => '站点角色不合法'], 400);
+        }
+
+        // 客户端模式必须填写服务端地址
+        if ($quickMode === 'client' && trim((string) ($data['relay_server_url'] ?? '')) === '') {
+            return response()->json(['code' => 400, 'message' => '客户端模式必须填写服务端地址'], 400);
+        }
 
         // 访问模式校验
         $accessMode = (string) ($data['access_mode'] ?? '');
@@ -166,6 +179,16 @@ class SettingController extends Controller
 
             // 清除业务层缓存
             Cache::forget("cmspro_sso:config:{$key}");
+        }
+
+        // 站点角色变更时同步「客户端管理」菜单可见性（仅服务端模式可见）
+        if (array_key_exists('quick_mode', $data)) {
+            $clientsMenu = AdminMenu::where('code', 'admin_cmspro_sso_clients')->first();
+            if ($clientsMenu) {
+                $clientsMenu->update([
+                    'status' => $data['quick_mode'] === 'server' ? Status::ENABLED : Status::DISABLED,
+                ]);
+            }
         }
 
         // 涉及路由的配置（access_mode/access_path/access_domain）变更后必须清缓存

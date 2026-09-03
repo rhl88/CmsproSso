@@ -576,6 +576,10 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
                 layer.close(loadIdx);
                 if (res.code === 0) {
                     layer.msg('保存成功', { icon: 1, time: 1500 });
+                    // 站点角色影响「客户端管理」菜单可见性，保存成功后刷新左侧菜单
+                    if (top.PearAdmin && top.PearAdmin.refreshMenu) {
+                        top.PearAdmin.refreshMenu();
+                    }
                 } else {
                     layer.msg(res.message || '保存失败', { icon: 2 });
                 }

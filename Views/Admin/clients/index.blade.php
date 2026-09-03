@@ -18,7 +18,7 @@
         <div class="layui-card-body" style="color: #666; font-size: 13px; line-height: 1.9;">
             @if(!($is_server ?? false))
             <div style="padding: 8px 12px; margin-bottom: 10px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
-                当前站点快捷模式为「独立站」或「客户端」，客户端管理仅对快捷模式 = 服务端 生效。请在「登录设置 → 快捷模式」中将站点角色切换为「服务端」。
+                当前站点快捷模式为「独立站」或「客户端」，客户端管理仅对快捷模式 = 服务端 生效。请在「登录设置 → 访问设置」的站点角色中切换为「服务端」。
             </div>
             @endif
             <i class="layui-icon layui-icon-tips" style="color: #1e9fff;"></i>

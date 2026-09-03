@@ -35,6 +35,63 @@
                         {{-- 访问设置 Tab --}}
                         <div class="layui-tab-item layui-show">
                             <div class="layui-form-item">
+                                <label class="layui-form-label">站点角色</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 260px;">
+                                    <select name="quick_mode" id="quick_mode" lay-filter="quick_mode">
+                                        <option value="standalone" {{ ($configs['quick_mode'] ?? 'standalone') === 'standalone' ? 'selected' : '' }}>独立站（默认）</option>
+                                        <option value="server" {{ ($configs['quick_mode'] ?? 'standalone') === 'server' ? 'selected' : '' }}>服务端（提供中转）</option>
+                                        <option value="client" {{ ($configs['quick_mode'] ?? 'standalone') === 'client' ? 'selected' : '' }}>客户端（委托中转）</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">
+                                        服务端：本站已配置的微信/QQ 等社交登录可供客户端站点中转使用；<br>
+                                        客户端：本站微信/QQ 等本地社交配置强制失效，登录页社交入口改为服务端可中转平台。
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="quick-mode-server-item" style="display:none;">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #16baaa; background: #e8f7f5; color: #0f6b60; font-size: 13px; line-height: 1.8;">
+                                        服务端模式下，请前往「<a href="/admin/cmspro/sso/clients" style="color:#1e9fff;">客户端管理</a>」创建客户端并将 client_id / client_secret 发放给客户端站点；
+                                        客户端站点的回调地址须加入其白名单。
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="relay-server-url-item" style="display:none;">
+                                <label class="layui-form-label">服务端地址</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="relay_server_url" value="{{ $configs['relay_server_url'] ?? '' }}"
+                                           placeholder="https://sso.example.com 或 http://www.example.com/sso" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">服务端统一登录前台基础地址：子域名模式填域名地址；路径前缀模式填含前缀地址（如 http://www.example.com/sso）</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="relay-client-id-item" style="display:none;">
+                                <label class="layui-form-label">客户端 ID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="relay_client_id" value="{{ $configs['relay_client_id'] ?? '' }}"
+                                           placeholder="sso_xxxxxxxxxxxxxxxx" class="layui-input" style="width: 320px;">
+                                    <div class="layui-form-mid layui-word-aux">服务端「客户端管理」发放的 client_id</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="relay-client-secret-item" style="display:none;">
+                                <label class="layui-form-label">客户端密钥</label>
+                                <div class="layui-input-block">
+                                    <input type="password" name="relay_client_secret" value="{{ $configs['relay_client_secret'] ?? '' }}"
+                                           placeholder="请输入 client_secret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">服务端「客户端管理」发放的 client_secret（仅创建/重置时展示一次）</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="relay-callback-item" style="display:none;">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请将本站回调地址加入服务端对应客户端的白名单：<br>
+                                        <code id="relay-callback-url">{{ $relay_callback_url ?? '' }}</code>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
                                 <label class="layui-form-label">登录页标题</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="login_title" value="{{ $configs['login_title'] ?? '统一登录' }}"
@@ -92,67 +149,6 @@
                                     <input type="text" name="default_redirect" value="{{ $configs['default_redirect'] ?? '/' }}"
                                            placeholder="/" class="layui-input" style="width: 200px;">
                                     <div class="layui-form-mid layui-word-aux">登录成功后未指定 redirect 参数时的默认跳转地址</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- 快捷模式 Tab --}}
-                        <div class="layui-tab-item">
-                            <div class="layui-form-item">
-                                <label class="layui-form-label">站点角色</label>
-                                <div class="layui-input-block">
-                                    <div style="width: 260px;">
-                                    <select name="quick_mode" id="quick_mode" lay-filter="quick_mode">
-                                        <option value="standalone" {{ ($configs['quick_mode'] ?? 'standalone') === 'standalone' ? 'selected' : '' }}>独立站（默认）</option>
-                                        <option value="server" {{ ($configs['quick_mode'] ?? 'standalone') === 'server' ? 'selected' : '' }}>服务端（提供中转）</option>
-                                        <option value="client" {{ ($configs['quick_mode'] ?? 'standalone') === 'client' ? 'selected' : '' }}>客户端（委托中转）</option>
-                                    </select></div>
-                                    <div class="layui-form-mid layui-word-aux">
-                                        服务端：本站已配置的微信/QQ 等社交登录可供客户端站点中转使用；<br>
-                                        客户端：本站微信/QQ 等本地社交配置强制失效，登录页社交入口改为服务端可中转平台。
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="quick-mode-server-item" style="display:none;">
-                                <label class="layui-form-label"></label>
-                                <div class="layui-input-block">
-                                    <div style="padding: 8px 12px; border-left: 3px solid #16baaa; background: #e8f7f5; color: #0f6b60; font-size: 13px; line-height: 1.8;">
-                                        服务端模式下，请前往「<a href="/admin/cmspro/sso/clients" style="color:#1e9fff;">客户端管理</a>」创建客户端并将 client_id / client_secret 发放给客户端站点；
-                                        客户端站点的回调地址须加入其白名单。
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="relay-server-url-item" style="display:none;">
-                                <label class="layui-form-label">服务端地址</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="relay_server_url" value="{{ $configs['relay_server_url'] ?? '' }}"
-                                           placeholder="https://sso.example.com 或 http://www.example.com/sso" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">服务端统一登录前台基础地址：子域名模式填域名地址；路径前缀模式填含前缀地址（如 http://www.example.com/sso）</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="relay-client-id-item" style="display:none;">
-                                <label class="layui-form-label">客户端 ID</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="relay_client_id" value="{{ $configs['relay_client_id'] ?? '' }}"
-                                           placeholder="sso_xxxxxxxxxxxxxxxx" class="layui-input" style="width: 320px;">
-                                    <div class="layui-form-mid layui-word-aux">服务端「客户端管理」发放的 client_id</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="relay-client-secret-item" style="display:none;">
-                                <label class="layui-form-label">客户端密钥</label>
-                                <div class="layui-input-block">
-                                    <input type="password" name="relay_client_secret" value="{{ $configs['relay_client_secret'] ?? '' }}"
-                                           placeholder="请输入 client_secret" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">服务端「客户端管理」发放的 client_secret（仅创建/重置时展示一次）</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="relay-callback-item" style="display:none;">
-                                <label class="layui-form-label"></label>
-                                <div class="layui-input-block">
-                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
-                                        <strong>回调地址：</strong>请将本站回调地址加入服务端对应客户端的白名单：<br>
-                                        <code id="relay-callback-url">{{ $relay_callback_url ?? '' }}</code>
-                                    </div>
                                 </div>
                             </div>
                         </div>

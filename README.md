@@ -1,6 +1,6 @@
 # 统一登录应用 应用文档
 
-> 应用ID：`cmspro.sso` | 文档版本：1.10.0 | 应用版本：1.10.0 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
+> 应用ID：`cmspro.sso` | 文档版本：2.0.6 | 应用版本：2.0.6 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
 
 - 官方地址：https://www.cmspro.cn/apps/cmspro.sso
 - 本应用基于 CMSPRO 运行，请先安装 [CMSPRO](https://www.cmspro.cn/help/2)

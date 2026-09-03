@@ -2,7 +2,7 @@
     "id": "cmspro.sso",
     "name": "统一登录",
     "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信、QQ等社交化登录（当前实现微信登录与QQ互联登录）。支持子域名绑定与目录访问；快捷模式支持站点间社交登录中转——服务端以 OAuth2 授权码模式向客户端站点开放统一登录能力，客户端本地社交配置失效、社交登录委托服务端中转。",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "icon": "fa fa-sign-in",
     "author": "CmsPro",
     "require": {
@@ -61,7 +61,8 @@
         "/sso/oauth/authorize": "快捷模式服务端授权端点",
         "/sso/auth/relay/callback": "快捷模式客户端中转回调",
         "/sso/auth/relay/complete-invite": "快捷模式客户端新用户邀请码填写页",
-        "/sso/auth/relay/complete": "快捷模式客户端新用户完善资料页"
+        "/sso/auth/relay/complete": "快捷模式客户端新用户完善资料页",
+        "/sso/auth/relay/pc-success": "快捷模式中转扫码确认成功提示页"
     },
     "config_groups": [
         {

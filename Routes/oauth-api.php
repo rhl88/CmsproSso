@@ -11,4 +11,8 @@ Route::group([], function () {
     Route::post('/token', [OAuthController::class, 'token']);
     Route::get('/userinfo', [OAuthController::class, 'userinfo']);
     Route::post('/revoke', [OAuthController::class, 'revoke']);
+
+    // 中转扫码（客户端 PC 端扫码登录中转）
+    Route::post('/relay-qrcode', [OAuthController::class, 'relayQrcode']);
+    Route::get('/relay-status', [OAuthController::class, 'relayStatus']);
 });

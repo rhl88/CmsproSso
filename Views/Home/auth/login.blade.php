@@ -137,9 +137,13 @@ layui.use(['form', 'jquery', 'layer'], function(){
             return;
         }
 
-        // PC 端：弹出二维码扫码（中转模式整页跳转服务端授权页）
+        // PC 端：弹出二维码扫码（中转模式弹服务端授权页二维码，手机扫码在服务端确认）
         if (!isMobile) {
-            wechatLogin('pc', function(url, state, mode){
+            wechatLogin('pc', function(url, state, mode, data){
+                if (mode === 'relay_qrcode') {
+                    openRelayQrModal(data.qrcode_url, data.session_id);
+                    return;
+                }
                 if (mode === 'relay') {
                     window.location.href = url;
                     return;
@@ -162,7 +166,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
     $('#qq-login-btn').on('click', function(){
         var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
         if (qqMode === 'qrcode' && !isMobile) {
-            qqLogin('pc', function(url, state, mode){
+            qqLogin('pc', function(url, state, mode, data){
+                if (mode === 'relay_qrcode') {
+                    openRelayQrModal(data.qrcode_url, data.session_id);
+                    return;
+                }
                 if (mode === 'relay') {
                     window.location.href = url;
                     return;
@@ -574,7 +582,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
-                    callback(res.data.url, res.data.state, res.data.mode);
+                    callback(res.data.url, res.data.state, res.data.mode, res.data);
                 } else {
                     layer.msg(res.message || '获取微信授权失败', {icon: 2});
                 }
@@ -601,7 +609,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
-                    callback(res.data.url, res.data.state, res.data.mode);
+                    callback(res.data.url, res.data.state, res.data.mode, res.data);
                 } else {
                     layer.msg(res.message || '获取QQ授权失败', {icon: 2});
                 }
@@ -616,6 +624,69 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 layer.msg(msg, {icon: 2});
             }
         });
+    }
+
+    // PC 端弹出中转扫码二维码弹窗并轮询服务端扫码结果（快捷模式专用）
+    // 二维码内容为服务端授权页地址，手机扫码后在服务端登录/授权，PC 端轮询
+    // relay-status 取回登录结果：confirmed 凭授权码在客户端建登录态，
+    // 新用户跳完善资料/账号绑定分流页，failed 提示错误，waiting 继续轮询。
+    function openRelayQrModal(qrcodeUrl, sessionId){
+        var qrImg = window.SSO_API_BASE + '/qrcode?url=' + encodeURIComponent(qrcodeUrl) + '&size=240';
+        var idx = layer.open({
+            type: 1,
+            title: '统一登录扫码',
+            area: ['300px', '380px'],
+            content: '<div style="padding: 20px; text-align: center;">'
+                + '<img src="' + qrImg + '" style="width: 240px; height: 240px;" alt="统一登录扫码">'
+                + '<p style="margin-top: 12px; color: #666; font-size: 13px;">请使用手机浏览器扫码，在服务端完成登录授权</p>'
+                + '</div>',
+            closeBtn: 1,
+            end: function(){
+                clearInterval(pollTimer);
+            }
+        });
+
+        // 每 2 秒轮询扫码结果
+        var pollTimer = setInterval(function(){
+            $.ajax({
+                url: window.SSO_API_BASE + '/auth/relay/login-status',
+                type: 'GET',
+                data: { session_id: sessionId },
+                success: function(res){
+                    if (res.code !== 0) {
+                        return;
+                    }
+
+                    // 已确认：老用户直接登录跳转；新用户跳完善资料/账号绑定分流页
+                    if (res.data.logged_in) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        layer.msg('登录成功', {icon: 1, time: 1000}, function(){
+                            window.location.href = res.data.redirect || '/';
+                        });
+                        return;
+                    }
+                    if (res.data.need_setup) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        window.location.href = res.data.setup_url;
+                    }
+                },
+                error: function(xhr){
+                    // 扫码确认后失败（用户拒绝/换令牌失败等）：停止轮询并提示
+                    if (xhr.status === 422) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        var msg = '登录失败';
+                        try {
+                            var res = JSON.parse(xhr.responseText);
+                            if (res.message) msg = res.message;
+                        } catch(e) {}
+                        layer.msg(msg, {icon: 2, time: 2500});
+                    }
+                }
+            });
+        }, 2000);
     }
 
     // PC 端弹出二维码弹窗并轮询登录状态（微信/QQ 通用）

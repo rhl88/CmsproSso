@@ -15,6 +15,10 @@ use Illuminate\Routing\Controller;
  *   GET  /api/cmspro/sso/oauth/userinfo   凭 Bearer 令牌获取用户信息
  *   POST /api/cmspro/sso/oauth/revoke     吊销访问令牌
  *
+ * 中转扫码（客户端 PC 端扫码登录中转）：
+ *   POST /api/cmspro/sso/oauth/relay-qrcode  创建扫码会话并返回社交授权地址（二维码内容）
+ *   GET  /api/cmspro/sso/oauth/relay-status  轮询扫码结果（已确认后返回授权码回调上下文）
+ *
  * 本组路由不注册 web/session 中间件（跨站服务器调用无 CSRF），仅限流。
  */
 class OAuthController extends Controller
@@ -121,6 +125,109 @@ class OAuthController extends Controller
         $this->oauthService->revokeToken($token);
 
         return response()->json(['code' => 0, 'message' => 'ok', 'data' => null]);
+    }
+
+    // ---------------------------------------------------------------- 中转扫码（客户端 PC 端）
+
+    /**
+     * 创建中转扫码会话并返回社交授权地址（二维码内容）
+     *
+     * 客户端站点 PC 端发起扫码中转：校验客户端与回调地址白名单后登记会话，
+     * 返回可在客户端渲染为二维码的社交授权地址。扫码授权完成后服务端
+     * authorize 回调识别该会话，将授权码签发结果写入会话供轮询接口取回。
+     */
+    public function relayQrcode(Request $request): JsonResponse
+    {
+        if (!$this->oauthService->isServerEnabled()) {
+            return response()->json(['code' => 404, 'message' => '未开放'], 404);
+        }
+
+        $clientId = trim((string) $request->input('client_id', ''));
+        $redirectUri = trim((string) $request->input('redirect_uri', ''));
+        $platform = trim((string) $request->input('platform', ''));
+
+        if ($platform !== '' && !$this->oauthService->isPlatformAvailable($platform)) {
+            return response()->json(['code' => 400, 'message' => '该登录方式未在服务端启用'], 400);
+        }
+
+        $sessionId = $this->oauthService->createRelayQrSession($clientId, $redirectUri);
+        if ($sessionId === null) {
+            return response()->json(['code' => 400, 'message' => '无效的客户端或回调地址'], 400);
+        }
+
+        // 二维码内容：服务端 authorize 端点（浏览器跳转地址，手机扫码后打开授权页）
+        $authorizeUrl = rtrim($this->authorizeBaseUrl(), '/')
+            . '?' . http_build_query([
+                'client_id'     => $clientId,
+                'redirect_uri'  => $redirectUri,
+                'response_type' => 'code',
+                'platform'      => $platform,
+                'state'         => 'relay_qr:' . $sessionId,
+            ]);
+
+        return response()->json([
+            'code'    => 0,
+            'message' => 'ok',
+            'data'    => [
+                'session_id'   => $sessionId,
+                'qrcode_url'   => $authorizeUrl,
+                'expires_in'   => $this->oauthService::RELAY_QR_TTL,
+            ],
+        ]);
+    }
+
+    /**
+     * 轮询中转扫码结果
+     *
+     * 返回状态：waiting（未扫码/未确认）→ confirmed（已确认，携带授权码回调上下文，
+     * 客户端凭 code 走既有 token 换取流程建立登录态）→ consumed（结果已被取走）。
+     */
+    public function relayStatus(Request $request): JsonResponse
+    {
+        if (!$this->oauthService->isServerEnabled()) {
+            return response()->json(['code' => 404, 'message' => '未开放'], 404);
+        }
+
+        $sessionId = trim((string) $request->input('session_id', ''));
+        if ($sessionId === '' || !$this->oauthService->getRelayQrSession($sessionId)) {
+            return response()->json(['code' => 400, 'message' => '扫码会话无效或已过期'], 400);
+        }
+
+        $result = $this->oauthService->pullRelayQrResult($sessionId);
+        if (!$result) {
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['status' => 'waiting'],
+            ]);
+        }
+
+        // 授权失败（用户拒绝等）：携带错误信息返回
+        if (isset($result['error'])) {
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['status' => 'failed', 'error' => (string) $result['error']],
+            ]);
+        }
+
+        return response()->json([
+            'code'    => 0,
+            'message' => 'ok',
+            'data'    => [
+                'status'       => 'confirmed',
+                'code'         => (string) ($result['code'] ?? ''),
+                'platform'     => (string) ($result['platform'] ?? ''),
+            ],
+        ]);
+    }
+
+    /**
+     * 服务端 authorize 端点基础地址（scheme://host[:port] + 前台路径前缀）
+     */
+    protected function authorizeBaseUrl(): string
+    {
+        return \App\Apps\CmsproSso\Services\ShareService::frontUrl('/oauth/authorize');
     }
 
     /**

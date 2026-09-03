@@ -8,6 +8,7 @@ use App\Apps\CmsproSso\Models\Client;
 use App\Enums\Status;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * 快捷模式（社交登录中转）OAuth 服务（服务端）
@@ -29,6 +30,11 @@ class OAuthService
      * 访问令牌有效期（秒）：签发后 1 小时内可调用户信息接口
      */
     public const TOKEN_TTL = 3600;
+
+    /**
+     * 中转扫码会话有效期（秒）：客户端创建会话后 10 分钟内完成扫码
+     */
+    public const RELAY_QR_TTL = 600;
 
     /**
      * 可中转的社交平台定义（后续新增平台在此扩展 + 配置组）
@@ -246,5 +252,70 @@ class OAuthService
             'avatar'   => (string) ($user->avatar ?? ''),
             'platform' => $platform,
         ];
+    }
+
+    // ---------------------------------------------------------------- 中转扫码会话（客户端 PC 扫码中转）
+
+    /**
+     * 中转扫码会话 Cache 键前缀
+     *
+     * 会话内容为客户端 authorize 回调地址（redirect_uri），创建时校验白名单；
+     * 社交授权完成后据此跳回客户端并附带授权码（PC 轮询端凭会话 ID 换取登录结果）。
+     */
+    public const RELAY_QR_SESSION_PREFIX = 'cmspro_sso_relay_qr:';
+
+    /**
+     * 创建中转扫码会话
+     *
+     * 客户端站点发起 PC 扫码中转时调用：校验客户端与回调地址后登记会话，
+     * 会话值保存客户端回调地址（扫码确认后 302 跳回）。
+     *
+     * @return string|null 会话 ID（32 位随机串），客户端或回调地址无效时返回 null
+     */
+    public function createRelayQrSession(string $clientId, string $redirectUri): ?string
+    {
+        $client = $this->findEnabledClient($clientId);
+        if (!$client || $redirectUri === '' || !$this->isRedirectUriAllowed($client, $redirectUri)) {
+            return null;
+        }
+
+        $sessionId = bin2hex(random_bytes(16));
+        Cache::put(self::RELAY_QR_SESSION_PREFIX . $sessionId, [
+            'redirect_uri' => $redirectUri,
+        ], self::RELAY_QR_TTL);
+
+        return $sessionId;
+    }
+
+    /**
+     * 读取中转扫码会话（不消费，供 authorize 回调与轮询接口共用）
+     */
+    public function getRelayQrSession(string $sessionId): ?array
+    {
+        if ($sessionId === '') {
+            return null;
+        }
+
+        $session = Cache::get(self::RELAY_QR_SESSION_PREFIX . $sessionId);
+
+        return is_array($session) ? $session : null;
+    }
+
+    /**
+     * 写入中转扫码会话登录结果（社交授权完成后由回调写入，PC 端轮询读取）
+     */
+    public function putRelayQrResult(string $sessionId, array $result): void
+    {
+        Cache::put(self::RELAY_QR_SESSION_PREFIX . $sessionId . ':result', $result, self::RELAY_QR_TTL);
+    }
+
+    /**
+     * 读取并消费中转扫码会话登录结果（一次性，PC 端轮询到已登录后取回授权码）
+     */
+    public function pullRelayQrResult(string $sessionId): ?array
+    {
+        $result = Cache::pull(self::RELAY_QR_SESSION_PREFIX . $sessionId . ':result');
+
+        return is_array($result) ? $result : null;
     }
 }

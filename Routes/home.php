@@ -40,6 +40,8 @@ Route::get('/auth/relay/complete', [AuthController::class, 'completeForm']);
 // PC 扫码登录成功提示页
 Route::get('/auth/wechat/pc-success', [AuthController::class, 'pcSuccessForm']);
 Route::get('/auth/qq/pc-success', [AuthController::class, 'pcSuccessForm']);
+// 中转扫码确认成功提示页（客户端扫码会话在服务端完成授权后，手机端展示）
+Route::get('/auth/relay/pc-success', [AuthController::class, 'pcSuccessForm']);
 // 首次社交登录完善资料页
 Route::get('/auth/wechat/complete', [AuthController::class, 'completeForm']);
 Route::get('/auth/qq/complete', [AuthController::class, 'completeForm']);

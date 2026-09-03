@@ -29,6 +29,8 @@ Route::post('/auth/qq/invite', [AuthController::class, 'submitInvite']);
 
 // 快捷模式客户端 API（中转登录，仅 quick_mode=client 时开放）
 Route::get('/auth/relay/login-url', [AuthController::class, 'relayLoginUrl']);
+// PC 扫码中转：轮询服务端扫码结果（confirmed 后客户端建登录态/跳新用户分流页）
+Route::get('/auth/relay/login-status', [AuthController::class, 'relayLoginStatus']);
 Route::post('/auth/relay/invite', [AuthController::class, 'submitInvite']);
 // 新用户分流：完善资料（新建账号） / 账号绑定（登录已有账号）
 Route::post('/auth/relay/setup', [AuthController::class, 'setupAccount']);

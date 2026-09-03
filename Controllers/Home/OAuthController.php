@@ -65,6 +65,23 @@ class OAuthController extends Controller
         $user = auth('web')->user();
         $code = $this->oauthService->issueAuthCode($client, $user, $platform, $redirectUri);
 
+        // 中转扫码会话（state = relay_qr:{session_id}）：授权码不直接跳回客户端（手机端
+        // 无 PC 端会话），写入会话结果供客户端 PC 端轮询取回，本端跳提示页即可
+        if (str_starts_with($state, 'relay_qr:')) {
+            $sessionId = substr($state, strlen('relay_qr:'));
+            $session = $this->oauthService->getRelayQrSession($sessionId);
+            if ($session === null || $session['redirect_uri'] !== $redirectUri) {
+                return response('扫码会话无效或已过期，请重新扫码', 400);
+            }
+
+            $this->oauthService->putRelayQrResult($sessionId, [
+                'code'     => $code,
+                'platform' => $platform,
+            ]);
+
+            return redirect(ShareService::frontUrl('/auth/relay/pc-success'));
+        }
+
         $query = ['code' => $code];
         if ($state !== '') {
             $query['state'] = $state;

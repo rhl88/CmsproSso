@@ -184,4 +184,95 @@ class RelayClientService
 
         return is_array($data) && isset($data['id']) ? $data : null;
     }
+
+    /**
+     * 创建服务端 PC 扫码中转会话
+     *
+     * 调服务端 relay-qrcode 创建扫码会话（服务器间调用），
+     * 返回 {session_id, qrcode_url, expires_in}，失败返回 null。
+     *
+     * @param string $platform 社交平台（wechat/qq），留空不限定平台
+     * @return array{session_id: string, qrcode_url: string, expires_in: int}|null
+     */
+    public function createQrSession(string $platform = ''): ?array
+    {
+        $apiBase = $this->apiBase();
+        if ($apiBase === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::asForm()->timeout(self::TIMEOUT)->post($apiBase . '/relay-qrcode', [
+                'client_id'    => $this->settingService->get('relay_client_id', ''),
+                'redirect_uri' => $this->callbackUrl(),
+                'platform'     => $platform,
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        $data = $response->json('data');
+        $sessionId = (string) ($data['session_id'] ?? '');
+        $qrcodeUrl = (string) ($data['qrcode_url'] ?? '');
+
+        if ($sessionId === '' || $qrcodeUrl === '') {
+            return null;
+        }
+
+        return [
+            'session_id' => $sessionId,
+            'qrcode_url' => $qrcodeUrl,
+            'expires_in' => (int) ($data['expires_in'] ?? 600),
+        ];
+    }
+
+    /**
+     * 拉取服务端扫码会话结果（一次性消费）
+     *
+     * 调服务端 relay-status：waiting/consumed 返回 null（继续轮询），
+     * confirmed 返回 {code, platform}，failed 返回 {error}。
+     *
+     * @return array|null confirmed/failed 结果；waiting 或通信失败返回 null
+     */
+    public function pullQrResult(string $sessionId): ?array
+    {
+        $apiBase = $this->apiBase();
+        if ($apiBase === '') {
+            return null;
+        }
+
+        try {
+            $response = Http::timeout(self::TIMEOUT)->get($apiBase . '/relay-status', [
+                'session_id' => $sessionId,
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        $data = $response->json('data') ?? [];
+        $status = (string) ($data['status'] ?? '');
+
+        if ($status === 'confirmed') {
+            return [
+                'code'     => (string) ($data['code'] ?? ''),
+                'platform' => (string) ($data['platform'] ?? ''),
+            ];
+        }
+
+        if ($status === 'failed') {
+            return ['error' => (string) ($data['error'] ?? '扫码授权失败')];
+        }
+
+        // waiting（未扫码）或 consumed（结果已被取走，服务端 relay-status 为一次性
+        // 消费后回 consumed，客户端拉取结果后服务端已无结果可返回）
+        return null;
+    }
 }

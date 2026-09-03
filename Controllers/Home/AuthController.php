@@ -143,7 +143,7 @@ class AuthController extends Controller
     }
 
     /**
-     * 社交新用户邀请码填写页（邀请注册开启时，授权回调发现新用户后跳转；微信/QQ 通用）
+     * 社交新用户邀请码填写页（邀请注册开启时，授权回调发现新用户后跳转；微信/QQ/relay 通用）
      *
      * 平台由请求路径解析（/auth/wechat/complete-invite 或 /auth/qq/complete-invite），
      * 用于提交邀请码时调用对应平台接口。
@@ -151,7 +151,7 @@ class AuthController extends Controller
     public function completeInviteForm(Request $request)
     {
         $token = (string) $request->input('token', '');
-        $platform = str_contains($request->path(), 'qq') ? 'qq' : 'wechat';
+        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
 
         return view('cmspro.sso::Home.auth.complete-invite', [
             'token'    => $token,

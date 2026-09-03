@@ -108,7 +108,8 @@
 | GET | `/api/cmspro/sso/auth/qq/bind-status` | PC 扫码绑定状态轮询（需登录，参数 `state`） |
 | POST | `/api/cmspro/sso/user/bind/phone` | 手机验证码绑定（需登录） |
 | POST | `/api/cmspro/sso/user/unbind/{platform}` | 解绑（platform=phone/wechat/qq，需登录） |
-| GET | `/api/cmspro/sso/auth/relay/login-url` | 获取快捷模式中转授权跳转地址（客户端模式，state 存 session） |
+| GET | `/api/cmspro/sso/auth/relay/login-url` | 获取快捷模式中转授权跳转地址（客户端模式，state 存 session）；PC 端传 `device=pc` 返回 `mode=relay_qrcode`（扫码会话：session_id/qrcode_url/expires_in，不整页跳转） |
+| GET | `/api/cmspro/sso/auth/relay/login-status` | PC 扫码中转轮询（客户端模式，参数 session_id；confirmed 后客户端换令牌建登录态，新用户返回分流页地址） |
 | POST | `/api/cmspro/sso/auth/relay/invite` | 快捷模式新用户凭邀请码建号 |
 | POST | `/api/cmspro/sso/auth/relay/complete` | 快捷模式首次登录完善资料（新建账号） |
 | POST | `/api/cmspro/sso/auth/relay/setup` | 快捷模式新用户分流：完善资料建号（参数：token/nickname/phone，token 一次性消费） |
@@ -124,6 +125,8 @@
 | POST | `/api/cmspro/sso/oauth/token` | 授权码换取访问令牌（参数：grant_type=authorization_code、client_id、client_secret、code、redirect_uri） |
 | GET | `/api/cmspro/sso/oauth/userinfo` | 凭 `Authorization: Bearer {token}` 获取服务端用户信息（id/username/nickname/avatar/platform） |
 | POST | `/api/cmspro/sso/oauth/revoke` | 吊销访问令牌（参数：token） |
+| POST | `/api/cmspro/sso/oauth/relay-qrcode` | 创建中转扫码会话（参数：client_id、redirect_uri、可选 platform），返回服务端授权页地址（客户端渲染为二维码）与会话 ID，10 分钟有效 |
+| GET | `/api/cmspro/sso/oauth/relay-status` | 轮询中转扫码结果（参数：session_id）；waiting=未扫码/未确认，confirmed=已确认（携带授权码 code 与 platform），failed=授权失败（携带 error） |
 
 ### 3.5 手机验证码登录
 
@@ -195,6 +198,8 @@
 
 **流程说明**：客户端用户点击社交入口 → 调用 `/api/cmspro/sso/auth/relay/login-url`（state 存 session）→ 跳转服务端 `/sso/oauth/authorize` → 服务端未登录则先登录 → 签发一次性授权码（5 分钟有效）回跳客户端 `/sso/auth/relay/callback` → 客户端以 code 换 access_token（服务器间调用，1 小时有效）→ 取服务端用户信息 → 以「sso + 服务端用户 id」为身份锚点查找/创建本地账号并登录。无论中转哪个社交平台，同一服务端账号在客户端始终对应同一本地账号。
 
+**PC 扫码中转流程**（客户端 PC 端，微信/QQ PC 登录不再整页跳服务端授权页）：PC 端调 `login-url?device=pc` → 客户端服务器间调服务端 `relay-qrcode` 创建扫码会话 → 返回服务端授权页地址（`/sso/oauth/authorize?...&state=relay_qr:{session_id}`），客户端渲染为二维码弹窗 → 用户手机扫码打开服务端授权页（未登录先登录）→ 服务端校验会话有效（回调地址与会话登记一致）后签发授权码写入扫码会话，手机端展示确认成功提示页 `/sso/auth/relay/pc-success` → PC 端每 2 秒轮询 `/api/cmspro/sso/auth/relay/login-status` → confirmed 时客户端凭授权码走既有 token 换取流程，老用户直接登录、新用户跳完善资料/账号绑定分流页；扫码会话 10 分钟有效，授权码一次性消费。
+
 验证要点：
 - 非对应模式下访问 `/sso/oauth/authorize`、`/sso/auth/relay/callback` 均返回 404 页
 - 客户端模式登录页社交入口展示服务端可中转平台（服务端未启用或凭证未配置的平台不展示），点击走中转流程
@@ -203,6 +208,7 @@
 - 服务端禁用或删除客户端后，客户端站点的中转登录立即失效
 - 邀请注册开启时，客户端模式新用户先跳邀请码填写页，与其他社交平台一致
 - 客户端登录日志 `platform` 记录为 `relay`
+- PC 扫码中转：扫码会话无效/过期或回调地址与会话登记不一致时，服务端 authorize 返回「扫码会话无效或已过期，请重新扫码」；PC 端轮询返回 waiting/confirmed/failed 三态，confirmed 结果一次性消费
 
 ## 四、卸载验证
 
@@ -310,3 +316,4 @@ app/Apps/CmsproSso/
 | 2.0.3 | 2026-09-03 | 站点角色为客户端时微信/QQ 设置 Tab 仅保留启用开关，本地凭证配置自动隐藏，保存时不再校验本地凭证（社交登录走服务端中转）；新增客户端模式免凭证校验测试用例 |
 | 2.0.4 | 2026-09-03 | 客户端模式登录页微信/QQ 登录入口改为委托服务端中转：`login-url` 接口在客户端模式返回服务端 OAuth2 authorize 跳转地址（新增 `mode: relay` 字段），前端按 mode 整页跳转服务端授权页（不再提示「本站社交登录已由统一登录中转」）；回调复用 `/auth/relay/callback` 建号登录；原 400 报错断言测试替换为委托中转测试；访问设置「客户端密钥」输入框同步改为明文显示 |
 | 2.0.5 | 2026-09-03 | 快捷登录新用户分流页支持双 Tab：客户端模式回调未检测到本地账号时不再直接建号，授权数据暂存 Cache（token 一次性消费）后跳转完善资料页；页内提供「完善资料（默认，新建账号）」与「账号绑定（登录已有账号）」两种选择，绑定需账号密码验证（错误 5 次锁定 15 分钟），openid 已被其他账号绑定或账号停用时拒绝并提示；redirect 跳转全链路透传；新增 10 个分流测试用例 |
+| 2.0.6 | 2026-09-03 | 客户端 PC 端社交登录改为扫码中转：微信/QQ PC 端不再整页跳服务端授权页，新增服务端开放 API `relay-qrcode`（创建扫码会话并返回服务端授权页地址，10 分钟有效）与 `relay-status`（轮询扫码结果 waiting/confirmed/failed，一次性消费）；客户端 `login-url?device=pc` 返回 `mode=relay_qrcode` 扫码会话数据，前端弹二维码（内容为服务端 authorize 授权页，state=relay_qr:{session_id}），手机扫码在服务端登录授权后 PC 端轮询建登录态；新增 `/sso/auth/relay/pc-success` 手机端确认成功提示页；新用户分流与邀请注册全链路兼容；修复中转邀请页平台识别（relay 路径误判为 wechat）；新增 16 个扫码中转 Feature 测试用例 |

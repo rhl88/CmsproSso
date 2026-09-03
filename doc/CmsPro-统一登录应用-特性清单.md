@@ -155,4 +155,10 @@
 | 1.9.0 | 2026-09-02 | 绑定中心微信/QQ 支持 PC 扫码绑定：PC 端不再跳转授权页，改为弹二维码扫码（`bind-url?device=pc`，state 存 Cache 绑定键含目标用户，跨设备回调落库），经 `bind-status` 轮询绑定结果；移动端保持跳转授权                                                                                                                                                                                              |
 | 1.9.1 | 2026-09-03 | 绑定展示形态由后端统一决策：`bind-url` 返回新增 `display` 字段（qrcode=内嵌二维码，redirect=跳转授权），PC 端 QQ 依后台 `qq_mode` 分流（修正绑定中心固定弹二维码、未按 `qq_mode` 分流的问题）；微信 PC 固定扫码、移动端跳转授权不变；`SsoPcBindTest` 新增 5 个 display 决策用例                                                                                          |
 | 1.10.0 | 2026-09-03 | 新增快捷模式（社交登录中转）：站点角色三选一（独立站/服务端/客户端）；服务端 OAuth2 授权码流程（authorize 端点 + platforms/token/userinfo/revoke 开放 API、授权码 5 分钟一次性、令牌库存 SHA256 哈希 1 小时有效）、「客户端管理」（凭证发放/回调白名单/启停/重置密钥/删除清理）；客户端本地社交配置强制失效，中转登录以「sso+服务端用户id」为身份锚点建号；新增快捷模式三表与 `SsoOAuthRelayTest` 21 用例 |
+| 2.0.1 | 2026-09-03 | 修复站点角色保存失效（`quick_mode`/`relay_*` 配置键缺失于保存白名单导致落库被过滤）；保存站点角色后同步「客户端管理」菜单可见性；客户端模式保存时校验服务端地址必填 |
+| 2.0.2 | 2026-09-03 | 「客户端管理」菜单默认隐藏（`Install::postInstall` 按站点角色同步）；菜单可见性同步收敛至 `SettingService::syncClientsMenuVisibility`；AppSecret/AppKey 输入框改明文显示 |
+| 2.0.3 | 2026-09-03 | 客户端模式微信/QQ 设置 Tab 仅保留启用开关，本地凭证配置自动隐藏且保存不校验（社交登录走服务端中转） |
+| 2.0.4 | 2026-09-03 | 客户端模式登录页微信/QQ 入口委托服务端中转：`login-url` 返回 `mode: relay` authorize 跳转地址，前端整页跳转（移除 400 提示），回调复用 `/auth/relay/callback` 建号登录 |
+| 2.0.5 | 2026-09-03 | 快捷登录新用户分流页双 Tab：回调未检测到本地账号时授权数据暂存 Cache 跳完善资料页，提供「完善资料（默认）」与「账号绑定（登录已有账号）」双 Tab，绑定需账号密码验证（错 5 次锁 15 分钟），openid 冲突/账号停用拒绝 |
+| 2.0.6 | 2026-09-03 | 客户端 PC 端社交登录改扫码中转：服务端新增开放 API `relay-qrcode`（创建扫码会话返回授权页地址，10 分钟有效）与 `relay-status`（轮询 waiting/confirmed/failed 一次性消费）；客户端 `login-url?device=pc` 返回 `mode=relay_qrcode`，前端弹二维码（内容指向服务端 authorize，state=relay_qr:{session_id}）2 秒轮询建登录态；新增 `/sso/auth/relay/pc-success` 手机端确认提示页；修复中转邀请页平台识别（relay 误判 wechat）；新增 `SsoRelayQrcodeTest` 16 用例 |
 

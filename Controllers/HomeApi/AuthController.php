@@ -1588,8 +1588,11 @@ class AuthController extends Controller
      * 生成中转授权跳转地址（登录页中转入口与微信/QQ 登录入口客户端模式共用）
      *
      * state 存 session（复用社交授权会话键，platform=relay），回调时校验；回调地址固定为
-     * /auth/relay/callback，与服务端客户端白名单中配置的地址一致。客户端模式下微信/QQ
-     * 登录按钮也走此流程（整页跳转服务端授权页，授权完成后 redirect 回本站建立登录态）。
+     * /auth/relay/callback，与服务端客户端白名单中配置的地址一致。
+     *
+     * PC 端（device=pc）不整页跳转，改为扫码中转：调服务端 relay-qrcode 创建扫码会话，
+     * 返回服务端授权页地址（客户端渲染为二维码，手机扫码在服务端完成登录授权），
+     * PC 端凭 session_id 轮询 relay-status 取回授权码建立登录态。
      */
     protected function doRelayLoginUrl(Request $request, string $platform): JsonResponse
     {
@@ -1603,6 +1606,11 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '该登录方式未在服务端启用'], 400);
         }
 
+        // PC 端扫码中转：创建服务端扫码会话，返回授权页地址（二维码内容）与轮询句柄
+        if ((string) $request->input('device', '') === 'pc') {
+            return $this->doRelayQrcodeLogin($request, $platform);
+        }
+
         $state = md5(uniqid((string) mt_rand(), true));
         $request->session()->put($this->sessionStateKey('relay'), $state);
         $request->session()->put($this->sessionRedirectKey('relay'), trim((string) $request->input('redirect', '')));
@@ -1612,6 +1620,138 @@ class AuthController extends Controller
             'message' => 'ok',
             'data'    => ['url' => $relay->authorizeUrl($platform, $state), 'mode' => 'relay'],
         ]);
+    }
+
+    /**
+     * 快捷模式客户端：创建 PC 扫码中转会话
+     *
+     * 调服务端 relay-qrcode 创建扫码会话，返回服务端授权页地址（客户端渲染为二维码，
+     * 手机扫码后在服务端完成登录授权），PC 端凭 session_id 轮询 relayLoginStatus。
+     */
+    protected function doRelayQrcodeLogin(Request $request, string $platform): JsonResponse
+    {
+        $relay = app(RelayClientService::class);
+
+        $session = $relay->createQrSession($platform);
+        if ($session === null) {
+            return response()->json(['code' => 400, 'message' => '创建扫码会话失败，请联系管理员'], 400);
+        }
+
+        return response()->json([
+            'code'    => 0,
+            'message' => 'ok',
+            'data'    => array_merge(['mode' => 'relay_qrcode'], $session),
+        ]);
+    }
+
+    /**
+     * 快捷模式客户端：轮询 PC 扫码中转结果
+     *
+     * PC 端弹出二维码后前端轮询此接口：调服务端 relay-status 查询扫码会话结果，
+     * confirmed 时凭授权码换取访问令牌并取服务端用户信息，按既有 relay 回调
+     * 同样的分流逻辑处理（新用户跳完善资料/绑定页，老用户直接登录）。
+     */
+    public function relayLoginStatus(Request $request): JsonResponse
+    {
+        $relay = app(RelayClientService::class);
+        if (!$relay->isConfigured()) {
+            return response()->json(['code' => 400, 'message' => '快捷模式客户端未配置，请联系管理员'], 400);
+        }
+
+        $sessionId = trim((string) $request->input('session_id', ''));
+        if ($sessionId === '') {
+            return response()->json(['code' => 400, 'message' => '缺少 session_id'], 400);
+        }
+
+        $result = $relay->pullQrResult($sessionId);
+        if ($result === null) {
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['logged_in' => false],
+            ]);
+        }
+
+        // 扫码确认后授权失败（如用户拒绝）：向 PC 端返回具体错误
+        if (isset($result['error'])) {
+            return response()->json(['code' => 422, 'message' => (string) $result['error']], 422);
+        }
+
+        // 授权码换取访问令牌 → 凭令牌取服务端用户信息
+        $exchange = $relay->exchangeCode((string) $result['code']);
+        if (!$exchange['success']) {
+            Log::warning('快捷模式扫码中转登录失败', ['step' => 'exchange', 'message' => $exchange['message']]);
+
+            return response()->json(['code' => 422, 'message' => $exchange['message']], 422);
+        }
+
+        $info = $relay->userinfo($exchange['access_token']);
+        if ($info === null) {
+            Log::warning('快捷模式扫码中转登录失败', ['step' => 'userinfo']);
+
+            return response()->json(['code' => 422, 'message' => '获取服务端用户信息失败，请重新扫码'], 422);
+        }
+
+        // 身份锚点：服务端用户 id（与整页跳转中转登录一致，platform=relay）
+        $data = [
+            'openid'        => 'sso_' . $info['id'],
+            'unionid'       => null,
+            'nickname'      => (string) ($info['nickname'] ?? ''),
+            'avatar'        => (string) ($info['avatar'] ?? ''),
+            'access_token'  => '',
+            'refresh_token' => '',
+            'platform'      => 'relay',
+            'raw_data'      => $info,
+        ];
+
+        // 新用户分流：与 relayCallback 一致——授权数据暂存 Cache，PC 端跳分流页
+        // （邀请注册开启时跳邀请码页，否则跳完善资料/绑定页）
+        $existingUser = $this->findOauthUser($data['openid'], 'relay');
+        if ($existingUser === null) {
+            $token = bin2hex(random_bytes(16));
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => [
+                    'logged_in' => false,
+                    'need_setup' => true,
+                    'setup_url' => $this->relayCompleteUrl() . '&token=' . $token,
+                ],
+            ]);
+        }
+
+        // 老用户：建立 PC 端登录态
+        Auth::guard('web')->login($existingUser);
+        $request->session()->regenerate();
+        $existingUser->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($existingUser->id, 'relay', $request, 1, '快捷登录扫码成功');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '登录成功',
+            'data'    => [
+                'logged_in' => true,
+                'is_new'    => false,
+                'redirect'  => $this->resolveRedirect($request),
+            ],
+        ]);
+    }
+
+    /**
+     * 快捷模式新用户分流页地址（邀请注册开启时跳邀请码页，否则跳完善资料/绑定页）
+     *
+     * @param string $redirect 登录成功后的跳转地址（继续透传）
+     */
+    protected function relayCompleteUrl(string $redirect = ''): string
+    {
+        $targetUrl = $this->settingService->get('invite_enabled', '0') === '1'
+            ? '/auth/relay/complete-invite'
+            : '/auth/relay/complete';
+
+        return ShareService::frontUrl($targetUrl . '?redirect=' . urlencode($redirect));
     }
 
     /**

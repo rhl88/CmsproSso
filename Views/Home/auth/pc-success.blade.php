@@ -4,9 +4,9 @@
     $result = request()->query('result');
     $pcFailed = $result === 'failed';
     $pcInvite = $result === 'invite';
-    // 平台标识（wechat/qq），用于提示文案；由访问路径区分
-    $platform = str_contains(request()->path(), 'qq') ? 'qq' : 'wechat';
-    $label = $platform === 'qq' ? 'QQ' : '微信';
+    // 平台标识（wechat/qq/relay），用于提示文案；由访问路径区分
+    $platform = str_contains(request()->path(), 'relay') ? 'relay' : (str_contains(request()->path(), 'qq') ? 'qq' : 'wechat');
+    $label = $platform === 'qq' ? 'QQ' : ($platform === 'relay' ? '统一登录' : '微信');
 @endphp
 
 @section('title', $pcFailed ? '登录失败' : ($pcInvite ? '需要邀请码' : '扫码登录成功'))

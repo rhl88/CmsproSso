@@ -104,6 +104,20 @@ class SsoSettingMenuSyncTest extends TestCase
 
     // ---------------------------------------------------------------- 2. 校验与拦截
 
+    public function test_安装后按站点角色同步客户端管理菜单默认隐藏(): void
+    {
+        // 模拟安装：菜单由框架注册为启用，postInstall 按站点角色（默认独立站）同步为隐藏
+        AdminMenu::where('code', 'admin_cmspro_sso_clients')->update(['status' => 1]);
+        $install = new \App\Apps\CmsproSso\Install();
+        $install->postInstall();
+        $this->assertMenuStatus(0, '默认独立站安装后客户端管理菜单应隐藏');
+
+        // 重新安装场景：站点角色已配置为服务端时保持可见
+        $this->setConfig('quick_mode', 'server');
+        $install->postInstall();
+        $this->assertMenuStatus(1, '站点角色为服务端时重装后菜单应保持可见');
+    }
+
     public function test_非法站点角色返回400(): void
     {
         $this->actingAs($this->admin, 'admin')
@@ -137,6 +151,26 @@ class SsoSettingMenuSyncTest extends TestCase
         $menu = AdminMenu::where('code', 'admin_cmspro_sso_clients')->first();
         $this->assertNotNull($menu, '客户端管理菜单记录应存在');
         $this->assertSame($expected, $menu->status->value, $message);
+    }
+
+    /**
+     * 写入配置项
+     */
+    protected function setConfig(string $name, string $value): void
+    {
+        \Illuminate\Support\Facades\DB::table('config_items')->updateOrInsert(
+            ['code' => 'app_cmspro_sso_' . $name],
+            [
+                'name'        => $name,
+                'value'       => $value,
+                'group_id'    => 0,
+                'type'        => 'text',
+                'sort'        => 0,
+                'status'      => 1,
+                'create_time' => now(),
+                'update_time' => now(),
+            ]
+        );
     }
 
     /**

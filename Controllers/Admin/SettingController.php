@@ -4,8 +4,6 @@ namespace App\Apps\CmsproSso\Controllers\Admin;
 
 use App\Apps\CmsproSso\Services\SettingService;
 use App\Enums\AppStatus;
-use App\Enums\Status;
-use App\Models\AdminMenu;
 use App\Models\AppModel;
 use App\Models\ConfigGroup;
 use App\Models\ConfigItem;
@@ -183,12 +181,7 @@ class SettingController extends Controller
 
         // 站点角色变更时同步「客户端管理」菜单可见性（仅服务端模式可见）
         if (array_key_exists('quick_mode', $data)) {
-            $clientsMenu = AdminMenu::where('code', 'admin_cmspro_sso_clients')->first();
-            if ($clientsMenu) {
-                $clientsMenu->update([
-                    'status' => $data['quick_mode'] === 'server' ? Status::ENABLED : Status::DISABLED,
-                ]);
-            }
+            $this->settingService->syncClientsMenuVisibility((string) $data['quick_mode']);
         }
 
         // 涉及路由的配置（access_mode/access_path/access_domain）变更后必须清缓存

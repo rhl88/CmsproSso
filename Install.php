@@ -2,6 +2,7 @@
 
 namespace App\Apps\CmsproSso;
 
+use App\Apps\CmsproSso\Services\SettingService;
 use App\Models\ConfigGroup;
 use App\Models\ConfigItem;
 use Illuminate\Support\Facades\Cache;
@@ -14,6 +15,16 @@ class Install
     {
         $this->runMigrations();
         $this->seedDefaultConfigs();
+    }
+
+    /**
+     * 安装后处理（框架在菜单注册之后调用）：按当前站点角色同步「客户端管理」菜单可见性。
+     * 站点角色默认独立站，菜单默认隐藏，仅切换为服务端时启用。
+     */
+    public function postInstall(): void
+    {
+        $service = new SettingService();
+        $service->syncClientsMenuVisibility($service->getQuickMode());
     }
 
     public function uninstall(): void

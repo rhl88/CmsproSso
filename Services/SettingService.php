@@ -2,6 +2,8 @@
 
 namespace App\Apps\CmsproSso\Services;
 
+use App\Enums\Status;
+use App\Models\AdminMenu;
 use App\Models\ConfigItem;
 
 /**
@@ -67,6 +69,19 @@ class SettingService
     public function isRelayClient(): bool
     {
         return $this->getQuickMode() === 'client';
+    }
+
+    /**
+     * 按站点角色同步「客户端管理」菜单可见性（仅服务端模式可见，其余角色隐藏）
+     */
+    public function syncClientsMenuVisibility(string $mode): void
+    {
+        $menu = AdminMenu::where('code', 'admin_cmspro_sso_clients')->first();
+        if ($menu) {
+            $menu->update([
+                'status' => $mode === 'server' ? Status::ENABLED : Status::DISABLED,
+            ]);
+        }
     }
 
     /**

@@ -11,8 +11,8 @@ use Tests\TestCase;
  * 统一登录应用 · 前台登录页社交入口渲染测试
  *
  * 覆盖支付宝/抖音/微博/GitHub 登录入口按钮的渲染规则：
- *   独立站/服务端模式下后台开启对应平台开关 → 登录页显示对应入口；
- *   开关未开 → 不显示；快捷模式中转客户端 → 仅微信/QQ 受中转支持，其余入口隐藏。
+ *   后台开启对应平台开关 → 登录页显示对应入口；开关未开 → 不显示；
+ *   快捷模式中转客户端同样按启用状态显示，点击由服务端代跳中转（oauthLoginUrl 内部自动中转）。
  */
 class SsoLoginPageTest extends TestCase
 {
@@ -68,22 +68,22 @@ class SsoLoginPageTest extends TestCase
 
     // ---------------------------------------------------------------- 2. 快捷模式中转客户端
 
-    public function test_中转客户端模式下即使开启平台入口也隐藏(): void
+    public function test_中转客户端模式下按启用状态显示平台入口(): void
     {
         // 一键进入中转客户端配置
         $this->configRelayClient();
 
-        // 服务端仅支持微信/QQ 中转，支付宝/抖音/微博/GitHub 前台入口一律隐藏
+        // 中转客户端同样按后台启用状态显示支付宝/抖音/微博/GitHub 入口，点击由服务端代跳中转
         foreach (['alipay', 'douyin', 'weibo', 'github'] as $platform) {
             $this->setConfig($platform . '_enabled', '1');
         }
 
         $this->get('/sso/login')
             ->assertOk()
-            ->assertDontSee('id="alipay-login-btn"', false)
-            ->assertDontSee('id="douyin-login-btn"', false)
-            ->assertDontSee('id="weibo-login-btn"', false)
-            ->assertDontSee('id="github-login-btn"', false);
+            ->assertSee('id="alipay-login-btn"', false)
+            ->assertSee('id="douyin-login-btn"', false)
+            ->assertSee('id="weibo-login-btn"', false)
+            ->assertSee('id="github-login-btn"', false);
     }
 
     // ---------------------------------------------------------------- 辅助

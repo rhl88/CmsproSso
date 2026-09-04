@@ -51,23 +51,23 @@
             <i class="layui-icon layui-icon-email"></i> 邮箱
         </button>
         @endif
-        {{-- 支付宝/抖音/微博/GitHub：仅本站独立登录（非快捷模式中转客户端）时显示，中转模式下由服务端代跳且仅支持微信/QQ --}}
-        @if($configs['is_relay_client'] !== '1' && $configs['alipay_enabled'] === '1')
+        {{-- 支付宝/抖音/微博/GitHub：仅按后台启用状态显示；客户端（中转）模式下同样展示，点击由服务端代跳中转 --}}
+        @if($configs['alipay_enabled'] === '1')
         <button type="button" class="sso-social-btn sso-alipay" id="alipay-login-btn">
             <i class="sso-social-icon"></i> 支付宝
         </button>
         @endif
-        @if($configs['is_relay_client'] !== '1' && $configs['douyin_enabled'] === '1')
+        @if($configs['douyin_enabled'] === '1')
         <button type="button" class="sso-social-btn sso-douyin" id="douyin-login-btn">
             <i class="sso-social-badge">抖</i> 抖音
         </button>
         @endif
-        @if($configs['is_relay_client'] !== '1' && $configs['weibo_enabled'] === '1')
+        @if($configs['weibo_enabled'] === '1')
         <button type="button" class="sso-social-btn sso-weibo" id="weibo-login-btn">
             <i class="sso-social-icon"></i> 微博
         </button>
         @endif
-        @if($configs['is_relay_client'] !== '1' && $configs['github_enabled'] === '1')
+        @if($configs['github_enabled'] === '1')
         <button type="button" class="sso-social-btn sso-github" id="github-login-btn">
             <i class="sso-social-icon"></i> GitHub
         </button>

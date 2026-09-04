@@ -38,7 +38,7 @@ class AuthController extends Controller
             'douyin_enabled'  => $this->settingService->get('douyin_enabled', '0'),
             'weibo_enabled'   => $this->settingService->get('weibo_enabled', '0'),
             'github_enabled'  => $this->settingService->get('github_enabled', '0'),
-            // 快捷模式中转客户端：社交登录由服务端代跳，仅微信/QQ 受中转支持，其余平台入口隐藏
+            // 快捷模式中转客户端：社交登录均由服务端代跳（oauthLoginUrl 内部自动中转），入口按后台启用状态显示
             'is_relay_client' => $this->settingService->isRelayClient() ? '1' : '0',
             'allow_register'  => $this->settingService->get('allow_register', '1'),
             'invite_enabled'  => $this->settingService->get('invite_enabled', '0'),

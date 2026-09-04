@@ -6,6 +6,7 @@ use App\Apps\CmsproSso\Services\SettingService;
 use App\Apps\CmsproSso\Services\ShareService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
@@ -176,11 +177,21 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/login'));
         }
 
+        // relay 新用户：凭 token 取回暂存授权数据，回填服务端昵称（无本地账号可取）
+        $oauthNickname = '';
+        if ($platform === 'relay' && $token !== '') {
+            $oauthData = Cache::get('cmspro_sso_oauth_data:' . $token);
+            if (is_array($oauthData) && (string) ($oauthData['platform'] ?? '') === 'relay') {
+                $oauthNickname = (string) ($oauthData['nickname'] ?? '');
+            }
+        }
+
         return view('cmspro.sso::Home.auth.complete', [
             'user'     => $user,
             'platform' => $platform,
             'redirect' => (string) $request->input('redirect', ''),
             'token'    => $token,
+            'oauthNickname' => $oauthNickname,
         ]);
     }
 

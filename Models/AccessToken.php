@@ -8,6 +8,7 @@ use App\Models\BaseModel;
  * 快捷模式访问令牌模型（服务端）
  *
  * 不透明令牌：库内存 SHA256 哈希，过期或吊销后失效。
+ * 纯跳板透传：令牌不关联服务端用户，data_token 指向社交授权数据暂存键。
  */
 class AccessToken extends BaseModel
 {
@@ -22,6 +23,7 @@ class AccessToken extends BaseModel
         'client_id',
         'user_id',
         'platform',
+        'data_token',
         'expires_at',
         'revoked_at',
     ];

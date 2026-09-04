@@ -1095,11 +1095,17 @@ class AuthController extends Controller
         // 绑定 PC 扫码模式：state 存 Cache 绑定专用键（跨设备扫码，回调时在 bindPcOauthCallback 中消费取回目标用户）
         $isPcBindMode = false;
         $isPcMode = false;
-        // 中转扫码模式：state 以 relay_qr:{session_id} 标识（客户端站点 PC 扫码中转登录）
-        $isRelayQrMode = str_starts_with($state, 'relay_qr:');
+        // 中转模式识别（服务端纯跳板透传）：
+        //   1. PC 扫码中转：state = relay_qr:{session_id}（二维码直达社交授权页时携带）
+        //   2. 整页跳转中转：state 为 Base64 编码的 {ctx, uri}（authorize 端点构建，ctx 以 relay: 开头）
+        $decodedState = $this->decodeRelayOauthState($state);
+        $isRelayQrMode = str_starts_with($state, 'relay_qr:')
+            || (string) ($decodedState['ctx'] ?? '') !== '' && str_starts_with((string) $decodedState['ctx'], 'relay_qr:');
+        $isRelayMode = $isRelayQrMode
+            || ((string) ($decodedState['ctx'] ?? '') !== '' && str_starts_with((string) $decodedState['ctx'], 'relay:'));
 
-        if ($isRelayQrMode) {
-            // 中转扫码回调不做会话 state 校验（state 即扫码会话标识，防伪靠会话存在性）
+        if ($isRelayMode) {
+            // 中转回调不做会话 state 校验（state 即 authorize 端点构建的中转上下文，防伪靠白名单校验）
         } elseif ($state !== '' && Cache::has(self::CACHE_BIND_STATE_PREFIX . $state)) {
             $isBindMode = true;
             $isPcBindMode = true;
@@ -1144,10 +1150,11 @@ class AuthController extends Controller
             abort(400, $label . '授权失败，未获取到 openid');
         }
 
-        // 中转扫码模式（客户端站点 PC 扫码中转）：社交授权成功后不建服务端登录态，
-        // 而是向发起会话的客户端签发授权码写入扫码会话，手机端跳提示页、PC 端轮询取回
-        if ($isRelayQrMode) {
-            return $this->relayQrCallback($data, $platform, $state);
+        // 中转模式（客户端站点中转，服务端纯跳板透传）：社交授权成功后不建服务端账号、
+        // 不建服务端登录态，直接将社交真实 openid 与授权数据透传给客户端（签发不关联
+        // 服务端用户的授权码），手机端跳提示页、客户端凭授权码走透传流程
+        if ($isRelayMode) {
+            return $this->relayPassthroughCallback($data, $platform, $state, $decodedState, $isRelayQrMode);
         }
 
         // 绑定模式：已登录用户发起绑定，校验通过 → 走绑定落库流程（不建立新登录态、不改变当前用户）
@@ -1221,20 +1228,59 @@ class AuthController extends Controller
     }
 
     /**
-     * 中转扫码社交回调（客户端站点 PC 扫码中转登录）
+     * 中转社交回调（客户端站点中转，服务端纯跳板透传）
      *
-     * 二维码内容为服务端社交平台授权地址（state = relay_qr:{session_id}），手机扫码
-     * 授权确认后进入此处：按社交 openid 解析/创建服务端用户 → 向发起会话的客户端
-     * 签发 OAuth2 授权码写入扫码会话（PC 端轮询 relay-status 取回）→ 手机端跳提示页。
+     * 社交平台授权确认后进入此处：服务端不建账号、不绑定用户、不落任何用户数据，
+     * 仅将社交真实 openid 与授权数据暂存，并向客户端签发不关联服务端用户的授权码：
+     *   1. PC 扫码中转：授权码写入扫码会话（手机端跳提示页，客户端 PC 端轮询取回）；
+     *   2. 整页跳转中转：浏览器 302 回客户端回调地址（code + state）。
      *
-     * 防伪：会话由服务端 relay-qrcode 端点登记（client_id + redirect_uri 白名单校验），
-     * 伪造的 session_id 无法取到会话内容，直接返回失败不写入结果。
+     * 防伪：中转上下文由服务端 authorize 端点构建（客户端与回调地址均已过白名单校验），
+     * 扫码会话由 relay-qrcode 端点登记；伪造的会话标识无法取到会话内容，直接失败。
      *
-     * @param array $data 授权数据（openid/nickname/avatar/access_token 等）
+     * @param array $data 社交授权数据（openid/nickname/avatar/access_token 等，社交平台真实数据）
+     * @param string $platform 平台标识（wechat/qq）
+     * @param string $state 社交回调 state（明文 relay_qr:{session_id} 或 Base64 中转上下文）
+     * @param array $decodedState Base64 解码后的中转上下文（{ctx, uri}）
+     * @param bool $isRelayQrMode 是否为 PC 扫码中转
+     */
+    protected function relayPassthroughCallback(array $data, string $platform, string $state, array $decodedState, bool $isRelayQrMode)
+    {
+        if ($isRelayQrMode) {
+            return $this->relayQrPassthroughCallback($data, $platform, $state);
+        }
+
+        // 整页跳转中转：从社交回调 state 解码中转上下文（client_id + 客户端回调地址）
+        $ctx = (string) ($decodedState['ctx'] ?? '');
+        $redirectUri = (string) ($decodedState['uri'] ?? '');
+        $clientId = str_starts_with($ctx, 'relay:') ? substr($ctx, strlen('relay:')) : '';
+        $clientId = $clientId !== '' ? explode(':', $clientId)[0] : '';
+
+        $client = $clientId !== '' ? $this->oauthService->findEnabledClient($clientId) : null;
+        if (!$client || $redirectUri === '' || !$this->oauthService->isRedirectUriAllowed($client, $redirectUri)) {
+            return response('中转授权上下文无效或已过期，请重新发起登录', 400);
+        }
+
+        // 暂存社交授权数据（纯透传：服务端不落库，仅 Cache 短暂暂存供 code 换取）
+        $dataToken = $this->oauthService->putGrantData($data);
+        $code = $this->oauthService->issueAuthCode($client, $dataToken, $platform, $redirectUri);
+
+        // 302 回客户端回调地址（原 state 已随社交授权消费，客户端以会话自有 state 校验）
+        $query = ['code' => $code];
+
+        return redirect($redirectUri . (str_contains($redirectUri, '?') ? '&' : '?') . http_build_query($query));
+    }
+
+    /**
+     * 中转扫码社交回调（PC 扫码纯透传）
+     *
+     * 社交授权数据暂存后向扫码会话写入授权码，手机端跳提示页，客户端 PC 端轮询取回。
+     *
+     * @param array $data 社交授权数据（社交平台真实数据）
      * @param string $platform 平台标识（wechat/qq）
      * @param string $state 扫码会话标识（relay_qr:{session_id}）
      */
-    protected function relayQrCallback(array $data, string $platform, string $state)
+    protected function relayQrPassthroughCallback(array $data, string $platform, string $state)
     {
         $sessionId = substr($state, strlen('relay_qr:'));
         $session = $this->oauthService->getRelayQrSession($sessionId);
@@ -1244,22 +1290,14 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
         }
 
-        // 解析/创建服务端用户（绑定社交 openid，作为服务端身份承载）
-        try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, '', $platform);
-        } catch (\RuntimeException $e) {
-            Log::warning('中转扫码登录建号失败', ['platform' => $platform, 'message' => $e->getMessage()]);
-
-            return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
-        }
-
-        // 向发起会话的客户端签发授权码（回调地址为客户端 relay callback，与创建会话时登记一致）
         $client = $this->oauthService->findEnabledClient((string) $session['client_id']);
         if (!$client || !$this->oauthService->isRedirectUriAllowed($client, (string) $session['redirect_uri'])) {
             return redirect(ShareService::frontUrl('/auth/relay/pc-success?result=failed'));
         }
 
-        $code = $this->oauthService->issueAuthCode($client, $user, $platform, (string) $session['redirect_uri']);
+        // 暂存社交授权数据（纯透传：服务端不落库），签发不关联服务端用户的授权码写入会话
+        $dataToken = $this->oauthService->putGrantData($data);
+        $code = $this->oauthService->issueAuthCode($client, $dataToken, $platform, (string) $session['redirect_uri']);
 
         $this->oauthService->putRelayQrResult($sessionId, [
             'code'     => $code,
@@ -1267,6 +1305,27 @@ class AuthController extends Controller
         ]);
 
         return redirect(ShareService::frontUrl('/auth/relay/pc-success'));
+    }
+
+    /**
+     * 解码社交回调 state 中的中转上下文（authorize 端点 Base64 构建）
+     *
+     * @return array{ctx?: string, uri?: string} 非 Base64 中转 state 时返回空数组
+     */
+    protected function decodeRelayOauthState(string $state): array
+    {
+        if ($state === '' || str_starts_with($state, 'relay_qr:')) {
+            return [];
+        }
+
+        $decoded = base64_decode(strtr($state, '-_', '+/'), true);
+        if ($decoded === false) {
+            return [];
+        }
+
+        $payload = json_decode($decoded, true);
+
+        return is_array($payload) && isset($payload['ctx']) ? $payload : [];
     }
 
     /**
@@ -1709,7 +1768,7 @@ class AuthController extends Controller
      * 快捷模式客户端：轮询 PC 扫码中转结果
      *
      * PC 端弹出二维码后前端轮询此接口：调服务端 relay-status 查询扫码会话结果，
-     * confirmed 时凭授权码换取访问令牌并取服务端用户信息，按既有 relay 回调
+     * confirmed 时凭授权码换取访问令牌并取社交授权信息，按既有 relay 回调
      * 同样的分流逻辑处理（新用户跳完善资料/绑定页，老用户直接登录）。
      */
     public function relayLoginStatus(Request $request): JsonResponse
@@ -1750,17 +1809,17 @@ class AuthController extends Controller
         if ($info === null) {
             Log::warning('快捷模式扫码中转登录失败', ['step' => 'userinfo']);
 
-            return response()->json(['code' => 422, 'message' => '获取服务端用户信息失败，请重新扫码'], 422);
+            return response()->json(['code' => 422, 'message' => '获取社交授权信息失败，请重新扫码'], 422);
         }
 
-        // 身份锚点：服务端用户 id（与整页跳转中转登录一致，platform=relay）
+        // 身份锚点：社交平台真实 openid（服务端纯跳板透传，不做任何数据保存）
         $data = [
-            'openid'        => 'sso_' . $info['id'],
-            'unionid'       => null,
+            'openid'        => (string) $info['openid'],
+            'unionid'       => $info['unionid'] ?? null,
             'nickname'      => (string) ($info['nickname'] ?? ''),
             'avatar'        => (string) ($info['avatar'] ?? ''),
-            'access_token'  => '',
-            'refresh_token' => '',
+            'access_token'  => (string) ($info['access_token'] ?? ''),
+            'refresh_token' => (string) ($info['refresh_token'] ?? ''),
             'platform'      => 'relay',
             'raw_data'      => $info,
         ];
@@ -1818,8 +1877,8 @@ class AuthController extends Controller
     /**
      * 快捷模式客户端：服务端授权回调（浏览器跳转）
      *
-     * 流程：校验 state（防 CSRF）→ 授权码换访问令牌 → 取服务端用户信息 →
-     * 以「sso + 服务端用户 id」为身份锚点查找/创建本地账号并登录。
+     * 流程：校验 state（防 CSRF）→ 授权码换访问令牌 → 取社交授权信息 →
+     * 以「社交平台真实 openid」为身份锚点查找/创建本地账号并登录。
      * 新用户跳分流页（完善资料 / 账号绑定）；邀请注册开启时先跳邀请码填写页。
      */
     public function relayCallback(Request $request)
@@ -1853,22 +1912,22 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/login'))->with('error', $exchange['message']);
         }
 
-        // 凭访问令牌取服务端用户信息
+        // 凭访问令牌取社交授权信息
         $info = $relay->userinfo($exchange['access_token']);
         if ($info === null) {
             Log::warning('快捷模式中转登录失败', ['step' => 'userinfo']);
 
-            return redirect(ShareService::frontUrl('/login'))->with('error', '获取服务端用户信息失败，请重新登录');
+            return redirect(ShareService::frontUrl('/login'))->with('error', '获取社交授权信息失败，请重新登录');
         }
 
-        // 身份锚点：服务端用户 id。无论中转哪个社交平台，同一服务端账号在本地始终对应同一账号
+        // 身份锚点：社交平台真实 openid（服务端纯跳板透传，不做任何数据保存）
         $data = [
-            'openid'        => 'sso_' . $info['id'],
-            'unionid'       => null,
+            'openid'        => (string) $info['openid'],
+            'unionid'       => $info['unionid'] ?? null,
             'nickname'      => (string) ($info['nickname'] ?? ''),
             'avatar'        => (string) ($info['avatar'] ?? ''),
-            'access_token'  => '',
-            'refresh_token' => '',
+            'access_token'  => (string) ($info['access_token'] ?? ''),
+            'refresh_token' => (string) ($info['refresh_token'] ?? ''),
             'platform'      => 'relay',
             'raw_data'      => $info,
         ];

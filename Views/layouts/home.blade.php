@@ -244,6 +244,29 @@
             color: #94a3b8;
             margin-top: 16px;
         }
+        /* 快捷登录双 Tab（完善资料 / 账号绑定） */
+        .sso-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sso-tab {
+            flex: 1;
+            padding: 10px 0;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+        }
+        .sso-tab:hover { color: var(--primary); }
+        .sso-tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            font-weight: 600;
+        }
     </style>
     @yield('head')
 </head>

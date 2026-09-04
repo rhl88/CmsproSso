@@ -5,8 +5,6 @@ namespace App\Apps\CmsproSso\Services;
 use App\Apps\CmsproSso\Models\AccessToken;
 use App\Apps\CmsproSso\Models\AuthCode;
 use App\Apps\CmsproSso\Models\Client;
-use App\Enums\Status;
-use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
@@ -14,10 +12,12 @@ use Illuminate\Support\Facades\Cache;
  * 快捷模式（社交登录中转）OAuth 服务（服务端）
  *
  * 服务端以 OAuth2 授权码模式向客户端站点提供统一登录中转：
- *   authorize（浏览器跳转）→ 签发授权码 → 客户端以 code 换 access_token → 凭 token 取用户信息。
+ *   社交平台授权回调 → 暂存社交授权数据 → 签发授权码 → 客户端以 code 换 access_token
+ *   → 凭 token 取社交授权数据（openid/unionid/nickname/avatar）。
  *
- * 身份锚点：服务端用户 id。客户端以「sso + 服务端用户 id」建立本地映射，
- * 无论中转哪个社交平台，同一服务端账号在客户端始终对应同一本地账号。
+ * 纯跳板透传：服务端仅代跳社交授权，不建账号、不绑定用户、不落任何用户数据，
+ * 授权码与访问令牌均不关联服务端用户（user_id 为空），身份锚点为社交平台真实 openid，
+ * 由客户端站点以透传的 openid 建号登录。
  */
 class OAuthService
 {
@@ -37,6 +37,11 @@ class OAuthService
     public const RELAY_QR_TTL = 600;
 
     /**
+     * 社交授权数据暂存有效期（秒）：授权回调到客户端 code 换取之间的暂存窗口
+     */
+    public const OAUTH_DATA_TTL = 600;
+
+    /**
      * 可中转的社交平台定义（后续新增平台在此扩展 + 配置组）
      */
     public const PLATFORMS = [
@@ -48,6 +53,11 @@ class OAuthService
         protected SettingService $settingService
     ) {
     }
+
+    /**
+     * 社交授权数据暂存 Cache 键前缀（凭随机 token 一次性取回，随授权码透传给客户端）
+     */
+    public const OAUTH_DATA_PREFIX = 'cmspro_sso_oauth_grant:';
 
     /**
      * 当前站点是否为快捷模式服务端
@@ -118,28 +128,68 @@ class OAuthService
     }
 
     /**
-     * 签发授权码（一次性，5 分钟有效）
+     * 暂存社交授权数据并签发关联授权码（一次性，5 分钟有效）
+     *
+     * 纯跳板透传：社交授权数据（openid/nickname/avatar 等）暂存 Cache，授权码不关联
+     * 服务端用户（user_id 为空），客户端以 code 换 token 后凭暂存键取回社交数据。
+     *
+     * @param Client $client 客户端
+     * @param string $dataToken 社交授权数据暂存键（调用方先 putGrantData 写入）
+     * @param string $platform 平台标识（wechat/qq）
+     * @param string $redirectUri 授权码绑定的回调地址
      */
-    public function issueAuthCode(Client $client, User $user, string $platform, string $redirectUri): string
+    public function issueAuthCode(Client $client, string $dataToken, string $platform, string $redirectUri): string
     {
         $code = bin2hex(random_bytes(24));
 
         AuthCode::create([
             'code'         => $code,
             'client_id'    => $client->client_id,
-            'user_id'      => $user->id,
+            'user_id'      => null,
             'platform'     => mb_substr($platform, 0, 20),
             'redirect_uri' => mb_substr($redirectUri, 0, 500),
             'expires_at'   => Carbon::now()->addSeconds(self::CODE_TTL),
         ]);
 
+        // 授权码 → 暂存数据键映射（code 换 token 时定位社交授权数据）
+        Cache::put(self::OAUTH_DATA_PREFIX . $code, $dataToken, self::CODE_TTL);
+
         return $code;
+    }
+
+    /**
+     * 暂存社交授权数据（社交回调写入，客户端 code 换 token 后凭令牌读取）
+     *
+     * @param array $data 社交授权数据（openid/unionid/nickname/avatar/access_token 等）
+     * @return string 暂存键（随机 token）
+     */
+    public function putGrantData(array $data): string
+    {
+        $dataToken = bin2hex(random_bytes(16));
+        Cache::put(self::OAUTH_DATA_PREFIX . 'data:' . $dataToken, $data, self::OAUTH_DATA_TTL);
+
+        return $dataToken;
+    }
+
+    /**
+     * 取回并消费社交授权数据（一次性）
+     */
+    public function pullGrantData(string $dataToken): ?array
+    {
+        if ($dataToken === '') {
+            return null;
+        }
+
+        $data = Cache::pull(self::OAUTH_DATA_PREFIX . 'data:' . $dataToken);
+
+        return is_array($data) ? $data : null;
     }
 
     /**
      * 授权码换取访问令牌
      *
      * 校验链：客户端凭证 → 授权码存在/未过期/未使用/归属正确 → 回调地址一致。
+     * 纯跳板透传：令牌不关联服务端用户，仅绑定社交授权数据暂存键。
      *
      * @return array{success: bool, message: string, access_token?: string, token_type?: string, expires_in?: int}
      */
@@ -170,9 +220,10 @@ class OAuthService
         // 标记授权码已消费（一次性）
         $authCode->update(['used_at' => Carbon::now()]);
 
-        $user = User::find($authCode->user_id);
-        if (!$user || $user->status !== Status::ENABLED) {
-            return ['success' => false, 'message' => '用户不存在或已被禁用'];
+        // 取回社交授权数据暂存键（code → 数据键映射与授权码同期过期）
+        $dataToken = (string) Cache::pull(self::OAUTH_DATA_PREFIX . $code);
+        if ($dataToken === '') {
+            return ['success' => false, 'message' => '社交授权数据已过期，请重新授权'];
         }
 
         $token = bin2hex(random_bytes(32));
@@ -180,8 +231,9 @@ class OAuthService
         AccessToken::create([
             'token_hash' => AccessToken::hashToken($token),
             'client_id'  => $client->client_id,
-            'user_id'    => $user->id,
+            'user_id'    => null,
             'platform'   => $authCode->platform,
+            'data_token' => $dataToken,
             'expires_at' => Carbon::now()->addSeconds(self::TOKEN_TTL),
         ]);
 
@@ -195,9 +247,11 @@ class OAuthService
     }
 
     /**
-     * 解析访问令牌（未过期、未吊销），返回关联用户与授权上下文
+     * 解析访问令牌（未过期、未吊销），返回关联客户端与平台上下文
      *
-     * @return array{user: User, client_id: string, platform: string}|null
+     * 纯跳板透传：令牌不关联服务端用户，社交授权数据凭 data_token 暂存键读取。
+     *
+     * @return array{data_token: string, client_id: string, platform: string}|null
      */
     public function resolveToken(string $token): ?array
     {
@@ -213,15 +267,10 @@ class OAuthService
             return null;
         }
 
-        $user = User::find($record->user_id);
-        if (!$user || $user->status !== Status::ENABLED) {
-            return null;
-        }
-
         return [
-            'user'      => $user,
-            'client_id' => $record->client_id,
-            'platform'  => (string) $record->platform,
+            'data_token' => (string) ($record->data_token ?? ''),
+            'client_id'  => $record->client_id,
+            'platform'   => (string) $record->platform,
         ];
     }
 
@@ -241,16 +290,26 @@ class OAuthService
     }
 
     /**
-     * 构建用户信息（仅返回基础字段：id/用户名/昵称/头像/发起平台）
+     * 构建社交授权数据响应（透传社交平台真实 openid 与用户信息）
+     *
+     * @param string $dataToken 访问令牌携带的社交授权数据暂存键
      */
-    public function userinfoData(User $user, string $platform): array
+    public function userinfoData(string $dataToken): array
     {
+        $data = $this->pullGrantData($dataToken);
+        if ($data === null) {
+            return [];
+        }
+
         return [
-            'id'       => $user->id,
-            'username' => (string) $user->username,
-            'nickname' => (string) ($user->nickname ?? ''),
-            'avatar'   => (string) ($user->avatar ?? ''),
-            'platform' => $platform,
+            'openid'        => (string) ($data['openid'] ?? ''),
+            'unionid'       => (string) ($data['unionid'] ?? ''),
+            'nickname'      => (string) ($data['nickname'] ?? ''),
+            'avatar'        => (string) ($data['avatar'] ?? ''),
+            'access_token'  => (string) ($data['access_token'] ?? ''),
+            'refresh_token' => (string) ($data['refresh_token'] ?? ''),
+            'platform'      => (string) ($data['platform'] ?? ''),
+            'raw_data'      => $data['raw_data'] ?? null,
         ];
     }
 

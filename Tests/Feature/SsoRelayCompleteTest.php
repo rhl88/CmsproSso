@@ -104,6 +104,34 @@ class SsoRelayCompleteTest extends TestCase
 
     // ---------------------------------------------------------------- 2. 完善资料（新建账号）
 
+    public function test_分流页回填服务端授权昵称(): void
+    {
+        $this->configRelayClient();
+
+        // 暂存授权数据（服务端昵称「服务端昵称」），模拟回调后跳转分流页
+        $token = $this->putOauthData();
+
+        $response = $this->get('/sso/auth/relay/complete?token=' . $token);
+        $response->assertOk();
+
+        // 页面昵称输入框回填服务端授权昵称
+        $content = (string) $response->getContent();
+        $this->assertStringContainsString('value="服务端昵称"', $content);
+    }
+
+    public function test_分流页token无效时不回填昵称(): void
+    {
+        $this->configRelayClient();
+
+        $response = $this->get('/sso/auth/relay/complete?token=' . str_repeat('b', 32));
+        $response->assertOk();
+
+        // 授权数据不存在，昵称输入框为空值
+        $content = (string) $response->getContent();
+        $this->assertStringContainsString('id="setup-nickname"', $content);
+        $this->assertStringNotContainsString('value="服务端昵称"', $content);
+    }
+
     public function test_分流页完善资料创建账号并登录(): void
     {
         $this->configRelayClient();
@@ -261,7 +289,7 @@ class SsoRelayCompleteTest extends TestCase
     }
 
     /**
-     * 模拟服务端 token / userinfo 接口（服务端用户 id=888）
+     * 模拟服务端 token / userinfo 接口（纯跳板透传：返回社交真实 openid，无服务端账号概念）
      */
     protected function fakeServer(): void
     {
@@ -272,7 +300,16 @@ class SsoRelayCompleteTest extends TestCase
             ]),
             'sso.example.com/api/cmspro/sso/oauth/userinfo' => Http::response([
                 'code' => 0,
-                'data' => ['id' => 888, 'username' => 'wx_888', 'nickname' => '服务端昵称', 'avatar' => 'https://a.b/x.png', 'platform' => 'wechat'],
+                'data' => [
+                    'openid'        => 'sso_888',
+                    'unionid'       => '',
+                    'nickname'      => '服务端昵称',
+                    'avatar'        => 'https://a.b/x.png',
+                    'access_token'  => 'SOCIAL_AT_1',
+                    'refresh_token' => 'SOCIAL_RT_1',
+                    'platform'      => 'wechat',
+                    'raw_data'      => ['nickname' => '服务端昵称'],
+                ],
             ]),
         ]);
     }

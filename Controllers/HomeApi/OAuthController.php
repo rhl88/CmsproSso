@@ -91,7 +91,10 @@ class OAuthController extends Controller
     }
 
     /**
-     * 获取用户信息（Bearer 令牌认证，仅返回基础字段）
+     * 获取社交授权信息（Bearer 令牌认证）
+     *
+     * 中转纯跳板模式：服务端不建号不落库，凭 data_token 返回社交平台真实
+     * openid/unionid/昵称/头像及原始授权数据，客户端据此本地建号登录。
      */
     public function userinfo(Request $request): JsonResponse
     {
@@ -107,7 +110,7 @@ class OAuthController extends Controller
         return response()->json([
             'code'    => 0,
             'message' => 'ok',
-            'data'    => $this->oauthService->userinfoData($resolved['user'], $resolved['platform']),
+            'data'    => $this->oauthService->userinfoData((string) $resolved['data_token']),
         ]);
     }
 

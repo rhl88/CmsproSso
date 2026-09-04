@@ -3,7 +3,9 @@
 namespace App\Apps\CmsproSso\Controllers\Home;
 
 use App\Apps\CmsproSso\Services\OAuthService;
+use App\Apps\CmsproSso\Services\QqOauthService;
 use App\Apps\CmsproSso\Services\ShareService;
+use App\Apps\CmsproSso\Services\WechatOauthService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
@@ -12,8 +14,9 @@ use Illuminate\Routing\Controller;
  *
  * 客户端站点将用户重定向到此端点：
  *   1. 校验客户端与回调地址白名单；
- *   2. 服务端未登录 → 跳转统一登录页（携带 platform 提示，登录后回跳本端点）；
- *   3. 已登录 → 签发授权码并 302 回客户端回调地址（code + state）。
+ *   2. 构建（或按请求参数取）社交平台授权地址，302 跳转社交平台授权页；
+ *   3. 社交平台授权完成后回调本应用社交回调端点，服务端以纯跳板方式向客户端
+ *      透传社交授权数据（不建账号、不落用户数据）。
  */
 class OAuthController extends Controller
 {
@@ -51,42 +54,61 @@ class OAuthController extends Controller
             return response('该登录方式未在服务端启用', 400);
         }
 
-        // 未登录：跳转统一登录页，登录成功后回跳本端点完成授权
-        if (!auth('web')->check()) {
-            $authorizeUrl = $request->fullUrl();
-            $loginUrl = ShareService::frontUrl('/login')
-                . '?redirect=' . urlencode($authorizeUrl)
-                . ($platform !== '' ? '&platform=' . urlencode($platform) : '');
+        // 中转扫码会话（state = relay_qr:{session_id}）：二维码内容本应直达社交授权页，
+        // 但扫码会话创建时不限定平台（platform 可为空），此处兜底解析目标平台后仍跳社交授权
+        $isRelayQr = str_starts_with($state, 'relay_qr:');
 
-            return redirect($loginUrl);
+        // 解析本次中转的目标社交平台（未指定时默认微信，与登录页入口平台一致）
+        if ($platform === '') {
+            $platform = 'wechat';
         }
 
-        // 已登录：签发授权码并回跳客户端
-        $user = auth('web')->user();
-        $code = $this->oauthService->issueAuthCode($client, $user, $platform, $redirectUri);
+        // 构建社交平台授权地址（纯跳板：服务端不登录、不签发，直接代跳社交授权）
+        $callbackUrl = ShareService::frontUrl('/auth/' . $platform . '/callback');
+        // 社交回调 state 携带中转上下文（客户端与会话标识），回调时据此识别中转场景
+        $relayContext = $isRelayQr
+            ? $state
+            : 'relay:' . $client->client_id . ':' . bin2hex(random_bytes(12));
+        $oauthState = $this->buildOauthState($relayContext, $redirectUri);
 
-        // 中转扫码会话（state = relay_qr:{session_id}）：授权码不直接跳回客户端（手机端
-        // 无 PC 端会话），写入会话结果供客户端 PC 端轮询取回，本端跳提示页即可
-        if (str_starts_with($state, 'relay_qr:')) {
-            $sessionId = substr($state, strlen('relay_qr:'));
-            $session = $this->oauthService->getRelayQrSession($sessionId);
-            if ($session === null || $session['redirect_uri'] !== $redirectUri) {
-                return response('扫码会话无效或已过期，请重新扫码', 400);
-            }
-
-            $this->oauthService->putRelayQrResult($sessionId, [
-                'code'     => $code,
-                'platform' => $platform,
-            ]);
-
-            return redirect(ShareService::frontUrl('/auth/relay/pc-success'));
+        $buildResult = $this->buildPlatformOauthUrl($platform, $callbackUrl, $oauthState);
+        if (!$buildResult['success']) {
+            return response($buildResult['message'], 400);
         }
 
-        $query = ['code' => $code];
-        if ($state !== '') {
-            $query['state'] = $state;
+        return redirect($buildResult['url']);
+    }
+
+    /**
+     * 构建社交回调 state（中转上下文 + 回调地址，Base64 编码承载）
+     *
+     * @param string $relayContext 中转上下文（relay:{client_id}:{nonce} 或 relay_qr:{session_id}）
+     * @param string $redirectUri 客户端回调地址（社交授权完成后透传给授权码流程）
+     */
+    protected function buildOauthState(string $relayContext, string $redirectUri): string
+    {
+        return rtrim(strtr(base64_encode(json_encode([
+            'ctx' => $relayContext,
+            'uri' => $redirectUri,
+        ])), '+/', '-_'), '=');
+    }
+
+    /**
+     * 构建社交平台授权跳转地址（微信网页授权 / QQ 互联授权）
+     *
+     * @return array{success: bool, url: string, message: string}
+     */
+    protected function buildPlatformOauthUrl(string $platform, string $callbackUrl, string $oauthState): array
+    {
+        $services = [
+            'wechat' => WechatOauthService::class,
+            'qq'     => QqOauthService::class,
+        ];
+
+        if (!isset($services[$platform])) {
+            return ['success' => false, 'url' => '', 'message' => '无效的平台'];
         }
 
-        return redirect($redirectUri . (str_contains($redirectUri, '?') ? '&' : '?') . http_build_query($query));
+        return app($services[$platform])->buildOauthRedirectUrl($callbackUrl, $oauthState);
     }
 }

@@ -1,7 +1,7 @@
 # CmsPro 统一登录扩展指南
 
-> 版本：1.2.1 | 更新日期：2026-09-02
-> 适用应用：CmsproSso v1.5.4+
+> 版本：2.0.9 | 更新日期：2026-09-04
+> 适用应用：CmsproSso v2.0.9+
 
 ---
 
@@ -92,11 +92,11 @@ $enabled = $app && $app->status->value === 1;
 | `isPlatformAvailable(string $platform)` | 平台标识 | bool | 平台是否可中转 |
 | `findEnabledClient(string $clientId)` | 客户端ID | ?Client | 查找启用状态的客户端 |
 | `isRedirectUriAllowed(Client $client, string $redirectUri)` | 客户端、回调地址 | bool | 回调地址是否在白名单内（精确匹配） |
-| `issueAuthCode(Client $client, User $user, string $platform, string $redirectUri)` | 客户端、用户、平台、回调地址 | string | 签发一次性授权码（5 分钟有效） |
+| `issueAuthCode(Client $client, string $dataToken, string $platform, string $redirectUri)` | 客户端、社交授权数据暂存键、平台、回调地址 | string | 签发一次性授权码（5 分钟有效，user_id 为 null 纯透传） |
 | `exchangeCode(string $clientId, string $clientSecret, string $code, string $redirectUri)` | 凭证与授权信息 | array | 授权码换访问令牌，返回 `['success','message','access_token','token_type','expires_in']` |
-| `resolveToken(string $token)` | 令牌明文 | ?array | 解析有效令牌，返回 `['user','client_id','platform']` |
+| `resolveToken(string $token)` | 令牌明文 | ?array | 解析有效令牌，返回 `['data_token','client_id','platform']`（纯透传：不关联服务端用户，data_token 为社交授权数据暂存键） |
 | `revokeToken(string $token)` | 令牌明文 | bool | 吊销访问令牌 |
-| `userinfoData(User $user, string $platform)` | 用户、平台 | array | 构建最小用户信息（id/username/nickname/avatar/platform） |
+| `userinfoData(string $dataToken)` | 社交授权数据暂存键 | array | 凭 data_token 透传社交平台真实数据（openid/unionid/nickname/avatar/access_token/refresh_token/platform/raw_data），暂存数据一次性取回 |
 
 **RelayClientService**（快捷模式客户端）
 
@@ -106,7 +106,7 @@ $enabled = $app && $app->status->value === 1;
 | `authorizeUrl(string $platform, string $state)` | 平台（可空）、state | string | 服务端 authorize 授权跳转地址 |
 | `platforms()` | - | array | 拉取服务端可中转平台列表（通信失败返回空数组） |
 | `exchangeCode(string $code)` | 授权码 | array | 服务器间 code 换 access_token |
-| `userinfo(string $accessToken)` | 令牌明文 | ?array | 获取服务端用户信息 |
+| `userinfo(string $accessToken)` | 令牌明文 | ?array | 获取社交授权信息（透传社交平台真实 openid 等数据，失败返回 null） |
 | `callbackUrl()` | - | string | 本站中转回调地址 |
 
 ### 3.3 调用示例
@@ -133,12 +133,13 @@ if ($smsService->isConfigured()) {
 $settingService->isRelayServer(); // 服务端（提供中转）
 $settingService->isRelayClient(); // 客户端（委托中转）
 
-// 快捷模式服务端：校验令牌并取用户（供服务端自身的其他逻辑复用）
+// 快捷模式服务端：校验令牌并透传社交授权数据（供服务端自身的其他逻辑复用）
 $oauthService = app(\App\Apps\CmsproSso\Services\OAuthService::class);
 $context = $oauthService->resolveToken($plainToken);
 if ($context) {
-    $user = $context['user'];       // 服务端用户
-    $platform = $context['platform']; // 发起登录的平台
+    $dataToken = $context['data_token'];   // 社交授权数据暂存键
+    $platform = $context['platform'];      // 发起登录的平台
+    $data = $oauthService->userinfoData($dataToken); // 社交平台真实数据（一次性取回）
 }
 ```
 
@@ -200,8 +201,8 @@ if ($context) {
 9. **绑定与登录 state 隔离**：绑定授权 state 存 session 键 `cmspro_sso_{platform}_bind_oauth_state`（PC 扫码绑定存 Cache `cmspro_sso_bind_state:`，含目标用户 id，回调据此落库），登录 state 存 `cmspro_sso_{platform}_oauth_state`（PC 扫码存 Cache `cmspro_sso_login_state:`）；绑定结果轮询走 Cache `cmspro_sso_bind_result:`。三者共用回调地址，回调按 state 校验位置区分模式，禁止混用。
 10. **解绑保护**：解绑前须统计可登录方式（密码/手机/微信/QQ），解绑后为 0 时拒绝（防账号锁死）。平台随机密码以 `phone_`/`wx_`/`qq_` 前缀存储，不可登录，不计入统计。
 11. **快捷模式令牌安全**：访问令牌明文仅签发时返回一次，库存 SHA256 哈希不可逆推；授权码一次性使用且 5 分钟有效；回调地址白名单精确匹配，禁止使用前缀/通配匹配（防开放重定向）。
-12. **快捷模式身份锚点**：客户端以「sso + 服务端用户 id」为 open_id（platform=relay）建立本地映射，同一服务端账号无论中转哪个社交平台对应同一本地账号；服务端仅回传最小用户字段集，不回传邮箱/手机号等敏感信息。
-13. **快捷模式扩展平台**：新增可中转社交平台时，在 `OAuthService::PLATFORMS` 增加定义并为该平台实现配置判断（启用开关 + 凭证完整性），服务端开放 API 与客户端登录页入口自动生效。
+12. **快捷模式身份锚点**：服务端为纯跳板（不建号、不绑定、不保存任何用户数据），客户端以「社交平台真实 openid」为 open_id（platform=relay）建立本地映射，同一社交账号无论经哪个服务端中转、中转哪个社交平台均对应同一本地账号；社交授权数据（openid/unionid/昵称/头像/令牌/raw_data）经 Cache 暂存凭 data_token 一次性透传，服务端不落库。
+13. **快捷模式扩展平台**：中转透传链路平台无关——新增可中转社交平台时，在 `OAuthService::PLATFORMS` 增加定义并为该平台实现配置判断（启用开关 + 凭证完整性）与社交回调（`/auth/{platform}/callback`），服务端开放 API 与客户端登录页入口自动生效，服务端与客户端中转逻辑均无需改动。
 
 ## 八、版本与更新日志
 
@@ -218,3 +219,4 @@ if ($context) {
 | 1.8.0 | 2026-09-02 |开发团队 |新增邮箱验证码登录：`SettingService::isEmailLoginEnabled()`（开关 + `mail_configured()` 双重判断）、`sendEmailCode()`（复用系统注册验证码缓存键与邮件模板，RateLimiter 每分钟每邮箱 3 次）、`emailLogin()`（验证码一次性失效，未注册邮箱事务内建号）、`createEmailUser()`（用户名取邮箱 @ 前缀，冲突加随机后缀） |
 | 1.9.0 | 2026-09-02 |开发团队 |绑定中心微信/QQ 支持 PC 扫码绑定：`oauthBindUrl()` 支持 `device=pc`（state 存 Cache 绑定键 `cmspro_sso_bind_state:` 含目标用户 id）、`bindPcOauthCallback()` 跨设备回调落库（绑定目标取自 Cache，不依赖回调请求自身登录态）、`oauthBindStatus()` 轮询绑定结果（`cmspro_sso_bind_result:`，成功 `bound`/失败 `error`） |
 | 1.10.0 | 2026-09-03 |开发团队 |新增快捷模式（社交登录中转）：`OAuthService`（服务端授权码流程：签发/换取/解析/吊销）+ `RelayClientService`（客户端与服务端通信）+ `isRelayServer()/isRelayClient()` 角色判断；开放 API `/api/cmspro/sso/oauth`（platforms/token/userinfo/revoke）；客户端以「sso+服务端用户id」为身份锚点建号登录 |
+| 2.0.9 | 2026-09-04 |开发团队 |服务端重构为纯跳板透传（不建号、不绑定、不落任何用户数据）：`OAuthService` 去 User 依赖——`issueAuthCode` 改收 dataToken（user_id 为 null）、`resolveToken` 返回 data_token 上下文、`userinfoData(string $dataToken)` 凭暂存键透传社交平台真实数据；`RelayClientService::userinfo` 期望透传结构（openid/unionid/nickname/avatar/令牌/platform/raw_data）；客户端 relayCallback/relayLoginStatus 改以社交真实 openid 为身份锚点建号；`OAuthController@authorize` 已登录不再静默签发；迁移 auth_codes/access_tokens 表 user_id 改 nullable、access_tokens 新增 data_token；透传链路平台无关，新增第三方登录仅需服务端接入社交回调 |

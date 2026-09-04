@@ -6,6 +6,9 @@
     // 快捷登录新用户分流：relay 平台带 token（授权数据暂存句柄），支持「完善资料 / 账号绑定」双 Tab
     $relayToken = (string) ($token ?? '');
     $isRelay = $platform === 'relay' && $relayToken !== '';
+    // 回填昵称：relay 新用户无本地账号，优先取服务端授权昵称，其次本地账号昵称
+    $nickname = $isRelay ? (string) ($oauthNickname ?? '') : (string) ($user->nickname ?? '');
+    $phone = (string) ($user->phone ?? '');
 @endphp
 
 @section('title', $isRelay ? '快捷登录' : '完善资料')
@@ -28,11 +31,11 @@
         </p>
         <div class="layui-form-item">
             <input type="text" id="setup-nickname" placeholder="昵称" maxlength="50"
-                   value="{{ $user->nickname ?? '' }}" class="layui-input">
+                   value="{{ $nickname }}" class="layui-input">
         </div>
         <div class="layui-form-item">
             <input type="text" id="setup-phone" placeholder="手机号（可选）" maxlength="20"
-                   value="{{ $user->phone ?? '' }}" class="layui-input">
+                   value="{{ $phone }}" class="layui-input">
         </div>
         <div class="layui-form-item">
             <button type="button" class="layui-btn layui-btn-fluid" id="setup-submit"

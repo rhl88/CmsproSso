@@ -159,9 +159,12 @@ class RelayClientService
     }
 
     /**
-     * 凭访问令牌获取服务端用户信息
+     * 凭访问令牌获取社交授权信息（服务端纯跳板透传）
      *
-     * @return array|null 失败返回 null；成功返回 {id, username, nickname, avatar, platform}
+     * 服务端不再托管账号，返回社交平台真实身份与授权数据，
+     * 客户端据此以社交 openid 为身份锚点本地建号/登录。
+     *
+     * @return array|null 失败返回 null；成功返回 {openid, unionid, nickname, avatar, access_token, refresh_token, platform, raw_data}
      */
     public function userinfo(string $accessToken): ?array
     {
@@ -182,7 +185,7 @@ class RelayClientService
 
         $data = $response->json('data');
 
-        return is_array($data) && isset($data['id']) ? $data : null;
+        return is_array($data) && isset($data['openid']) ? $data : null;
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Models\BaseModel;
  * 快捷模式授权码模型（服务端）
  *
  * 一次性使用，签发后 5 分钟有效，换取访问令牌后标记 used_at。
+ * 纯跳板透传：授权码不关联服务端用户（user_id 恒为空）。
  */
 class AuthCode extends BaseModel
 {

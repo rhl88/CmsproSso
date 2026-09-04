@@ -2,6 +2,7 @@
 
 namespace App\Apps\CmsproSso;
 
+use App\Apps\CmsproSso\Controllers\User\AccountController;
 use App\Models\AdminMenu;
 use App\Models\ConfigItem;
 use Illuminate\Support\Facades\Route;
@@ -44,6 +45,13 @@ class ServiceProvider extends BaseServiceProvider
 
         // 前台统一登录路由（三模式）
         $this->registerHomeRoutes();
+
+        // 前台账号管理页覆盖（应用注入账号绑定，参照 CmsproNotepad 覆盖 dashboard 模式；不修改框架文件）
+        Route::prefix('user')
+            ->middleware(['web', 'auth:web'])
+            ->group(function () {
+                Route::get('/account', [AccountController::class, 'index'])->name('user.account');
+            });
     }
 
     /**
@@ -89,6 +97,14 @@ class ServiceProvider extends BaseServiceProvider
                     ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
                     ->group(base_path('app/Apps/CmsproSso/Routes/oauth-api.php'));
             }
+
+            // 子域名模式下也全局注册前台 API，使主站前台账号页(/user/account)的账号绑定中心可跨域访问。
+            // 绑定中心请求走主站域、用主站 web session 认证（auth:web），故仅需全局注册 home-api 前台接口；
+            // 服务端开放接口（oauth-api.php）仍仅在子域开放，不暴露到主站。
+            Route::prefix('api/cmspro/sso')
+                ->middleware(['web', 'throttle:60,1'])
+                ->namespace('App\Apps\CmsproSso\Controllers\HomeApi')
+                ->group(base_path('app/Apps/CmsproSso/Routes/home-api.php'));
         } elseif ($accessMode === 'path') {
             // 路径前缀模式：前台页面路由加 prefix
             $path = $this->getConfigValue('access_path', 'sso');

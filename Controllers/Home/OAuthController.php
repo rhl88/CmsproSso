@@ -69,7 +69,8 @@ class OAuthController extends Controller
         $relayContext = $isRelayQr
             ? $state
             : 'relay:' . $client->client_id . ':' . bin2hex(random_bytes(12));
-        $oauthState = $this->buildOauthState($relayContext, $redirectUri);
+        // 客户端原始 state（整页跳转中转时为客户端登录会话暂存值）一并编入，社交授权完成后回跳客户端时带回
+        $oauthState = $this->buildOauthState($relayContext, $redirectUri, $isRelayQr ? '' : $state);
 
         $buildResult = $this->buildPlatformOauthUrl($platform, $callbackUrl, $oauthState);
         if (!$buildResult['success']) {
@@ -84,13 +85,19 @@ class OAuthController extends Controller
      *
      * @param string $relayContext 中转上下文（relay:{client_id}:{nonce} 或 relay_qr:{session_id}）
      * @param string $redirectUri 客户端回调地址（社交授权完成后透传给授权码流程）
+     * @param string $clientState 客户端原始 state（整页跳转中转时携带，社交授权完成后回跳客户端时原样带回）
      */
-    protected function buildOauthState(string $relayContext, string $redirectUri): string
+    protected function buildOauthState(string $relayContext, string $redirectUri, string $clientState = ''): string
     {
-        return rtrim(strtr(base64_encode(json_encode([
+        $payload = [
             'ctx' => $relayContext,
             'uri' => $redirectUri,
-        ])), '+/', '-_'), '=');
+        ];
+        if ($clientState !== '') {
+            $payload['s'] = $clientState;
+        }
+
+        return rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
     }
 
     /**

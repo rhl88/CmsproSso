@@ -1351,12 +1351,18 @@ class AuthController extends Controller
             return response('中转授权上下文无效或已过期，请重新发起登录', 400);
         }
 
+        // 原中转 state 已随社交授权消费，回客户端时须带回客户端原始 state（authorize 端点编入的字段 s），
+        // 供客户端以会话自有暂存值比对，校验通过后才建立登录态；无 s（老 state 或扫码，扫码走独立分支）时不带
+        $clientState = (string) ($decodedState['s'] ?? '');
+
         // 暂存社交授权数据（纯透传：服务端不落库，仅 Cache 短暂暂存供 code 换取）
         $dataToken = $this->oauthService->putGrantData($data);
         $code = $this->oauthService->issueAuthCode($client, $dataToken, $platform, $redirectUri);
 
-        // 302 回客户端回调地址（原 state 已随社交授权消费，客户端以会话自有 state 校验）
         $query = ['code' => $code];
+        if ($clientState !== '') {
+            $query['state'] = $clientState;
+        }
 
         return redirect($redirectUri . (str_contains($redirectUri, '?') ? '&' : '?') . http_build_query($query));
     }

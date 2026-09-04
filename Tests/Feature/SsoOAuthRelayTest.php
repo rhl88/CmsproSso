@@ -341,8 +341,11 @@ class SsoOAuthRelayTest extends TestCase
         $this->createClient();
         $this->fakeQqOauthCode('qq_real_openid_2', '中转用户', 'https://a.b/relay.png');
 
-        // authorize 代跳 QQ 互联授权页（社交回调 state 为 Base64 中转上下文）
-        $authorize = $this->get('/sso/oauth/authorize?' . http_build_query($this->authorizeQuery(['platform' => 'qq'])));
+        // authorize 代跳 QQ 互联授权页（社交回调 state 为 Base64 中转上下文，携带客户端原始 state）
+        $authorize = $this->get('/sso/oauth/authorize?' . http_build_query($this->authorizeQuery([
+            'platform' => 'qq',
+            'state'    => 'client_side_state_abc',
+        ])));
         $authorizeLocation = (string) $authorize->headers->get('Location');
         parse_str((string) parse_url($authorizeLocation, PHP_URL_QUERY), $authorizeQuery);
         $oauthState = (string) $authorizeQuery['state'];
@@ -353,12 +356,13 @@ class SsoOAuthRelayTest extends TestCase
             'state' => $oauthState,
         ]))->assertRedirect();
 
-        // 302 回客户端回调地址，携带签发的授权码
+        // 302 回客户端回调地址，携带签发的授权码，并原样带回客户端原始 state（客户端据此与会话暂存值比对）
         $location = (string) $response->headers->get('Location');
         $this->assertStringStartsWith('https://app.example.com/auth/relay/callback?', $location);
         parse_str((string) parse_url($location, PHP_URL_QUERY), $callbackQuery);
         $code = (string) $callbackQuery['code'];
         $this->assertNotSame('', $code);
+        $this->assertSame('client_side_state_abc', (string) ($callbackQuery['state'] ?? ''));
 
         // 服务端不落任何用户数据：授权码不关联用户，不建服务端账号/绑定记录
         $authCode = AuthCode::where('code', $code)->first();

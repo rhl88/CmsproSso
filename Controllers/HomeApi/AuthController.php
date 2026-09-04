@@ -11,6 +11,10 @@ use App\Apps\CmsproSso\Services\RelayClientService;
 use App\Apps\CmsproSso\Services\OAuthService;
 use App\Apps\CmsproSso\Services\WechatOauthService;
 use App\Apps\CmsproSso\Services\QqOauthService;
+use App\Apps\CmsproSso\Services\AlipayOauthService;
+use App\Apps\CmsproSso\Services\DouyinOauthService;
+use App\Apps\CmsproSso\Services\WeiboOauthService;
+use App\Apps\CmsproSso\Services\GithubOauthService;
 use App\Models\User;
 use App\Models\UserGroup;
 use App\Models\UserThirdParty;
@@ -640,7 +644,7 @@ class AuthController extends Controller
         }
 
         // 仅展示后台开启的快捷登录方式（与登录页入口开关一致）
-        $platforms = ['phone', 'email', 'wechat', 'qq'];
+        $platforms = ['phone', 'email', 'wechat', 'qq', 'alipay', 'douyin', 'weibo', 'github'];
         $enabledPlatforms = array_values(array_filter($platforms, function ($platform) {
             if ($platform === 'phone') {
                 return $this->settingService->isPhoneLoginEnabled();
@@ -862,6 +866,70 @@ class AuthController extends Controller
     }
 
     /**
+     * 支付宝授权登录 URL（网页授权跳转）
+     */
+    public function alipayLoginUrl(Request $request): JsonResponse
+    {
+        return $this->oauthLoginUrl($request, 'alipay');
+    }
+
+    /**
+     * 抖音授权登录 URL（网页授权跳转）
+     */
+    public function douyinLoginUrl(Request $request): JsonResponse
+    {
+        return $this->oauthLoginUrl($request, 'douyin');
+    }
+
+    /**
+     * 微博授权登录 URL（网页授权跳转）
+     */
+    public function weiboLoginUrl(Request $request): JsonResponse
+    {
+        return $this->oauthLoginUrl($request, 'weibo');
+    }
+
+    /**
+     * GitHub 授权登录 URL（网页授权跳转）
+     */
+    public function githubLoginUrl(Request $request): JsonResponse
+    {
+        return $this->oauthLoginUrl($request, 'github');
+    }
+
+    /**
+     * 支付宝绑定授权 URL（绑定中心：已登录用户绑定支付宝）
+     */
+    public function alipayBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'alipay');
+    }
+
+    /**
+     * 抖音绑定授权 URL（绑定中心：已登录用户绑定抖音）
+     */
+    public function douyinBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'douyin');
+    }
+
+    /**
+     * 微博绑定授权 URL（绑定中心：已登录用户绑定微博）
+     */
+    public function weiboBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'weibo');
+    }
+
+    /**
+     * GitHub 绑定授权 URL（绑定中心：已登录用户绑定 GitHub）
+     */
+    public function githubBindUrl(Request $request): JsonResponse
+    {
+        return $this->oauthBindUrl($request, 'github');
+    }
+
+    /**
      * 生成社交账号绑定授权链接（微信/QQ 通用，绑定中心）
      *
      * 与登录授权的差异：
@@ -883,10 +951,7 @@ class AuthController extends Controller
         if ($this->settingService->get($platform . '_enabled', '0') !== '1') {
             return response()->json(['code' => 400, 'message' => $label . '登录未启用'], 400);
         }
-        $configured = $platform === 'qq'
-            ? $this->settingService->isQqConfigured()
-            : $this->settingService->isWechatConfigured();
-        if (!$configured) {
+        if (!$this->settingService->isSocialConfigured($platform)) {
             return response()->json(['code' => 400, 'message' => $label . '登录未配置，请联系管理员'], 400);
         }
 
@@ -939,9 +1004,7 @@ class AuthController extends Controller
         }
 
         // 原生模式：直接调用对应平台网页授权
-        $oauthService = $platform === 'qq'
-            ? app(QqOauthService::class)
-            : app(WechatOauthService::class);
+        $oauthService = $this->socialService($platform);
         $result = $oauthService->buildOauthRedirectUrl($callbackUrl, $state);
 
         if (!$result['success']) {
@@ -979,10 +1042,7 @@ class AuthController extends Controller
         if ($this->settingService->get($platform . '_enabled', '0') !== '1') {
             return response()->json(['code' => 400, 'message' => $label . '登录未启用'], 400);
         }
-        $configured = $platform === 'qq'
-            ? $this->settingService->isQqConfigured()
-            : $this->settingService->isWechatConfigured();
-        if (!$configured) {
+        if (!$this->settingService->isSocialConfigured($platform)) {
             return response()->json(['code' => 400, 'message' => $label . '登录未配置，请联系管理员'], 400);
         }
 
@@ -1024,9 +1084,7 @@ class AuthController extends Controller
         }
 
         // 原生模式：直接调用对应平台网页授权
-        $oauthService = $platform === 'qq'
-            ? app(QqOauthService::class)
-            : app(WechatOauthService::class);
+        $oauthService = $this->socialService($platform);
         $result = $oauthService->buildOauthRedirectUrl($callbackUrl, $state);
 
         if (!$result['success']) {
@@ -1065,7 +1123,39 @@ class AuthController extends Controller
     }
 
     /**
-     * 社交化授权回调（微信/QQ 通用）
+     * 支付宝授权回调
+     */
+    public function alipayCallback(Request $request)
+    {
+        return $this->oauthCallback($request, 'alipay');
+    }
+
+    /**
+     * 抖音授权回调
+     */
+    public function douyinCallback(Request $request)
+    {
+        return $this->oauthCallback($request, 'douyin');
+    }
+
+    /**
+     * 微博授权回调
+     */
+    public function weiboCallback(Request $request)
+    {
+        return $this->oauthCallback($request, 'weibo');
+    }
+
+    /**
+     * GitHub 授权回调
+     */
+    public function githubCallback(Request $request)
+    {
+        return $this->oauthCallback($request, 'github');
+    }
+
+    /**
+     * 社交化授权回调（各平台通用）
      *
      * 支持两种授权模式：
      *   1. 外挂模式（仅微信）：外挂脚本完成 code 换 openid 后跳回，附带 openid+state+可选 userinfo
@@ -1075,7 +1165,7 @@ class AuthController extends Controller
      *   1. PC 扫码模式：state 在 Cache 中，回调后将登录结果存 Cache，redirect 到提示页，PC 端轮询建立登录态
      *   2. 普通模式：state 在 session 中，回调后直接 login 并 redirect
      *
-     * @param string $platform 平台标识（wechat/qq）
+     * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github）
      */
     public function oauthCallback(Request $request, string $platform)
     {
@@ -1959,16 +2049,14 @@ class AuthController extends Controller
     }
 
     /**
-     * 原生模式：用 code 换 openid + 用户信息（微信/QQ 通用）
+     * 原生模式：用 code 换 openid + 用户信息（各社交平台通用，统一 Service 接口形状）
      *
      * @param string $code 授权 code
-     * @param string $platform 平台标识（wechat/qq）
+     * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github）
      */
     protected function resolveNativeOauthData(string $code, string $platform): ?array
     {
-        $openidService = $platform === 'qq'
-            ? app(QqOauthService::class)
-            : app(WechatOauthService::class);
+        $openidService = $this->socialService($platform);
         $result = $openidService->getOpenidByOauthCode($code);
 
         if (!$result['success'] || $result['openid'] === '') {
@@ -2377,11 +2465,18 @@ class AuthController extends Controller
     }
 
     /**
-     * 平台缩写前缀（用于生成用户名/随机密码前缀）
+     * 平台用户名前缀（首次社交登录自动建号用）
      */
     protected function platformPrefix(string $platform): string
     {
-        return $platform === 'qq' ? 'qq' : 'wx';
+        return match ($platform) {
+            'qq'     => 'qq',
+            'alipay' => 'ali',
+            'douyin' => 'dy',
+            'weibo'  => 'wb',
+            'github' => 'gh',
+            default  => 'wx',
+        };
     }
 
     /**
@@ -2389,7 +2484,22 @@ class AuthController extends Controller
      */
     protected function platformUserLabel(string $platform): string
     {
-        return $platform === 'qq' ? 'QQ用户' : '微信用户';
+        return SettingService::platformLabel($platform) . '用户';
+    }
+
+    /**
+     * 平台 → OAuth 服务实例映射（统一接口形状，新增平台在此登记）
+     */
+    protected function socialService(string $platform): object
+    {
+        return match ($platform) {
+            'qq'     => app(QqOauthService::class),
+            'alipay' => app(AlipayOauthService::class),
+            'douyin' => app(DouyinOauthService::class),
+            'weibo'  => app(WeiboOauthService::class),
+            'github' => app(GithubOauthService::class),
+            default  => app(WechatOauthService::class),
+        };
     }
 
     /**

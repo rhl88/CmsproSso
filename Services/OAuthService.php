@@ -47,6 +47,10 @@ class OAuthService
     public const PLATFORMS = [
         'wechat' => ['name' => '微信'],
         'qq'     => ['name' => 'QQ'],
+        'alipay' => ['name' => '支付宝'],
+        'douyin' => ['name' => '抖音'],
+        'weibo'  => ['name' => '微博'],
+        'github' => ['name' => 'GitHub'],
     ];
 
     public function __construct(
@@ -88,10 +92,7 @@ class OAuthService
                 continue;
             }
 
-            $configured = $platform === 'qq'
-                ? $this->settingService->isQqConfigured()
-                : $this->settingService->isWechatConfigured();
-            if (!$configured) {
+            if (!$this->settingService->isSocialConfigured($platform)) {
                 continue;
             }
 

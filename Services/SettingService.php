@@ -27,6 +27,10 @@ class SettingService
         'wechat_enabled', 'wechat_mp_app_id', 'wechat_mp_app_secret',
         'wechat_oauth_enabled', 'wechat_oauth_url',
         'qq_enabled', 'qq_mode', 'qq_app_id', 'qq_app_key',
+        'alipay_enabled', 'alipay_app_id', 'alipay_private_key',
+        'douyin_enabled', 'douyin_client_key', 'douyin_client_secret',
+        'weibo_enabled', 'weibo_app_key', 'weibo_app_secret',
+        'github_enabled', 'github_client_id', 'github_client_secret',
         'login_title', 'allow_register', 'default_redirect',
         'override_system',
         'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
@@ -117,6 +121,40 @@ class SettingService
     {
         return $this->get('qq_app_id') !== ''
             && $this->get('qq_app_key') !== '';
+    }
+
+    /**
+     * 按平台判断社交登录是否已配置（统一入口，供登录入口/绑定/中转平台列表复用）
+     *
+     * 支付宝需 AppID + 应用私钥（RSA2 签名请求）；其余平台为应用标识 + 密钥两件套。
+     */
+    public function isSocialConfigured(string $platform): bool
+    {
+        return match ($platform) {
+            'wechat' => $this->isWechatConfigured(),
+            'qq'     => $this->isQqConfigured(),
+            'alipay' => $this->get('alipay_app_id') !== '' && $this->get('alipay_private_key') !== '',
+            'douyin' => $this->get('douyin_client_key') !== '' && $this->get('douyin_client_secret') !== '',
+            'weibo'  => $this->get('weibo_app_key') !== '' && $this->get('weibo_app_secret') !== '',
+            'github' => $this->get('github_client_id') !== '' && $this->get('github_client_secret') !== '',
+            default  => false,
+        };
+    }
+
+    /**
+     * 平台中文标签（统一维护，供提示文案与前台展示复用）
+     */
+    public static function platformLabel(string $platform): string
+    {
+        return match ($platform) {
+            'wechat' => '微信',
+            'qq'     => 'QQ',
+            'alipay' => '支付宝',
+            'douyin' => '抖音',
+            'weibo'  => '微博',
+            'github' => 'GitHub',
+            default  => $platform,
+        };
     }
 
     /**

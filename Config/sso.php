@@ -25,6 +25,26 @@ return [
     'qq_app_id' => '',
     'qq_app_key' => '',
 
+    // 支付宝登录配置（网页授权，RSA2 签名）
+    'alipay_enabled' => '0',
+    'alipay_app_id' => '',
+    'alipay_private_key' => '',
+
+    // 抖音登录配置
+    'douyin_enabled' => '0',
+    'douyin_client_key' => '',
+    'douyin_client_secret' => '',
+
+    // 微博登录配置
+    'weibo_enabled' => '0',
+    'weibo_app_key' => '',
+    'weibo_app_secret' => '',
+
+    // GitHub 登录配置
+    'github_enabled' => '0',
+    'github_client_id' => '',
+    'github_client_secret' => '',
+
     // 登录设置
     'login_title' => '统一登录',
     'allow_register' => '1',

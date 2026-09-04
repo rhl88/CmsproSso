@@ -27,6 +27,17 @@ Route::post('/auth/qq/complete', [AuthController::class, 'completeProfile']);
 // 邀请注册开启时，QQ 新用户凭 token 提交邀请码完成注册（PC 弹窗 / QQ 端 complete-invite 页共用）
 Route::post('/auth/qq/invite', [AuthController::class, 'submitInvite']);
 
+// 支付宝/抖音/微博/GitHub 登录 API（整页跳转授权，state 存 session，无 PC 扫码，共用 login-status 之外的通用流程）
+Route::get('/auth/alipay/login-url', [AuthController::class, 'alipayLoginUrl']);
+Route::get('/auth/douyin/login-url', [AuthController::class, 'douyinLoginUrl']);
+Route::get('/auth/weibo/login-url', [AuthController::class, 'weiboLoginUrl']);
+Route::get('/auth/github/login-url', [AuthController::class, 'githubLoginUrl']);
+// 邀请注册开启时，新用户凭 token 提交邀请码完成注册（complete-invite 页共用，token 内含平台标识）
+Route::post('/auth/alipay/invite', [AuthController::class, 'submitInvite']);
+Route::post('/auth/douyin/invite', [AuthController::class, 'submitInvite']);
+Route::post('/auth/weibo/invite', [AuthController::class, 'submitInvite']);
+Route::post('/auth/github/invite', [AuthController::class, 'submitInvite']);
+
 // 快捷模式客户端 API（中转登录，仅 quick_mode=client 时开放）
 Route::get('/auth/relay/login-url', [AuthController::class, 'relayLoginUrl']);
 // PC 扫码中转：轮询服务端扫码结果（confirmed 后客户端建登录态/跳新用户分流页）
@@ -54,12 +65,17 @@ Route::get('/invite/order/status', [InviteController::class, 'status']);
 Route::middleware('cmspro.sso.auth')->group(function () {
     Route::get('/user/info', [AuthController::class, 'userInfo']);
 
-    // 绑定中心（微信/QQ 授权绑定、手机验证码绑定、解绑）
+    // 绑定中心（微信/QQ/支付宝/抖音/微博/GitHub 授权绑定、手机验证码绑定、解绑）
     Route::get('/user/bindings', [AuthController::class, 'bindings']);
     Route::get('/auth/wechat/bind-url', [AuthController::class, 'wechatBindUrl']);
     Route::get('/auth/wechat/bind-status', [AuthController::class, 'wechatBindStatus']);
     Route::get('/auth/qq/bind-url', [AuthController::class, 'qqBindUrl']);
     Route::get('/auth/qq/bind-status', [AuthController::class, 'qqBindStatus']);
+    // 支付宝/抖音/微博/GitHub 绑定：整页跳转授权，回调直接落库，无需轮询 bind-status
+    Route::get('/auth/alipay/bind-url', [AuthController::class, 'alipayBindUrl']);
+    Route::get('/auth/douyin/bind-url', [AuthController::class, 'douyinBindUrl']);
+    Route::get('/auth/weibo/bind-url', [AuthController::class, 'weiboBindUrl']);
+    Route::get('/auth/github/bind-url', [AuthController::class, 'githubBindUrl']);
     Route::post('/user/bind/phone', [AuthController::class, 'bindPhone']);
     Route::post('/user/bind/email', [AuthController::class, 'bindEmail']);
     Route::post('/user/unbind/{platform}', [AuthController::class, 'unbind']);

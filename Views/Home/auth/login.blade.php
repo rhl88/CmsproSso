@@ -28,7 +28,7 @@
         </div>
     </form>
 
-    @if($configs['wechat_enabled'] === '1' || $configs['qq_enabled'] === '1' || $configs['phone_login_enabled'] === '1' || $configs['email_login_enabled'] === '1')
+    @if($configs['wechat_enabled'] === '1' || $configs['qq_enabled'] === '1' || $configs['phone_login_enabled'] === '1' || $configs['email_login_enabled'] === '1' || $configs['alipay_enabled'] === '1' || $configs['douyin_enabled'] === '1' || $configs['weibo_enabled'] === '1' || $configs['github_enabled'] === '1')
     <div class="sso-divider"><span>其他登录方式</span></div>
     <div class="sso-oauth-row">
         @if($configs['wechat_enabled'] === '1')
@@ -49,6 +49,27 @@
         @if($configs['email_login_enabled'] === '1')
         <button type="button" class="sso-email-btn" id="email-login-btn">
             <i class="layui-icon layui-icon-email"></i> 邮箱
+        </button>
+        @endif
+        {{-- 支付宝/抖音/微博/GitHub：仅本站独立登录（非快捷模式中转客户端）时显示，中转模式下由服务端代跳且仅支持微信/QQ --}}
+        @if($configs['is_relay_client'] !== '1' && $configs['alipay_enabled'] === '1')
+        <button type="button" class="sso-social-btn sso-alipay" id="alipay-login-btn">
+            <i class="sso-social-badge">支</i> 支付宝
+        </button>
+        @endif
+        @if($configs['is_relay_client'] !== '1' && $configs['douyin_enabled'] === '1')
+        <button type="button" class="sso-social-btn sso-douyin" id="douyin-login-btn">
+            <i class="sso-social-badge">抖</i> 抖音
+        </button>
+        @endif
+        @if($configs['is_relay_client'] !== '1' && $configs['weibo_enabled'] === '1')
+        <button type="button" class="sso-social-btn sso-weibo" id="weibo-login-btn">
+            <i class="sso-social-badge">微</i> 微博
+        </button>
+        @endif
+        @if($configs['is_relay_client'] !== '1' && $configs['github_enabled'] === '1')
+        <button type="button" class="sso-social-btn sso-github" id="github-login-btn">
+            <i class="sso-social-badge">Gt</i> GitHub
         </button>
         @endif
     </div>
@@ -745,6 +766,53 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 }
             });
         }, 2000);
+    }
+
+    // 支付宝登录：调用中转登录接口跳转授权
+    $('#alipay-login-btn').on('click', function(){
+        oauthSocialLogin('alipay');
+    });
+
+    // 抖音登录：调用中转登录接口跳转授权
+    $('#douyin-login-btn').on('click', function(){
+        oauthSocialLogin('douyin');
+    });
+
+    // 微博登录：调用中转登录接口跳转授权
+    $('#weibo-login-btn').on('click', function(){
+        oauthSocialLogin('weibo');
+    });
+
+    // GitHub 登录：调用中转登录接口跳转授权
+    $('#github-login-btn').on('click', function(){
+        oauthSocialLogin('github');
+    });
+
+    // 通用：第三方社交登录（web 跳转方式）获取授权地址并跳转
+    function oauthSocialLogin(platform){
+        var loadIdx = layer.load(2);
+        $.ajax({
+            url: window.SSO_API_BASE + '/auth/' + platform + '/login-url',
+            type: 'GET',
+            data: { device: '', redirect: redirect },
+            success: function(res){
+                layer.close(loadIdx);
+                if (res.code === 0) {
+                    window.location.href = res.data.url;
+                } else {
+                    layer.msg(res.message || '获取授权失败', {icon: 2});
+                }
+            },
+            error: function(xhr){
+                layer.close(loadIdx);
+                var msg = '请求失败';
+                try {
+                    var res = JSON.parse(xhr.responseText);
+                    if (res.message) msg = res.message;
+                } catch(e) {}
+                layer.msg(msg, {icon: 2});
+            }
+        });
     }
 });
 </script>

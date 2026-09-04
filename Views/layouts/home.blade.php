@@ -230,6 +230,46 @@
             color: #fff;
         }
         .sso-email-btn i { font-size: 20px; }
+        /* 通用社交登录按钮（支付宝/抖音/微博/GitHub，品牌色描边 + 文字徽标，无第三方图标依赖） */
+        .sso-social-btn {
+            flex: 1;
+            height: 44px;
+            border: 1px solid;
+            background: #fff;
+            border-radius: var(--radius);
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .sso-social-btn:hover { color: #fff; }
+        .sso-alipay { border-color: #1677ff; color: #1677ff; }
+        .sso-alipay:hover { background: #1677ff; }
+        .sso-douyin { border-color: #000; color: #000; }
+        .sso-douyin:hover { background: #000; }
+        .sso-weibo { border-color: #e6162d; color: #e6162d; }
+        .sso-weibo:hover { background: #e6162d; }
+        .sso-github { border-color: #181717; color: #181717; }
+        .sso-github:hover { background: #181717; }
+        .sso-social-btn .sso-social-badge {
+            width: 20px;
+            height: 20px;
+            border-radius: 5px;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .sso-alipay .sso-social-badge { background: #1677ff; }
+        .sso-douyin .sso-social-badge { background: #000; }
+        .sso-weibo .sso-social-badge { background: #e6162d; }
+        .sso-github .sso-social-badge { background: #181717; }
         .sso-link-row {
             display: flex;
             justify-content: space-between;

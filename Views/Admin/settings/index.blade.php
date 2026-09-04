@@ -26,9 +26,13 @@
                     <li class="layui-this"><i class="fa fa-globe"></i> 访问设置</li>
                     <li><i class="fa fa-user-plus"></i> 邀请注册</li>
                     <li><i class="fa fa-envelope"></i> 邮箱验证</li>
+                    <li><i class="fa fa-mobile"></i> 手机登录</li>
                     <li><i class="fa fa-weixin"></i> 微信设置</li>
                     <li><i class="fa fa-qq"></i> QQ设置</li>
-                    <li><i class="fa fa-mobile"></i> 手机登录</li>
+                    <li><i class="fa fa-credit-card"></i> 支付宝</li>
+                    <li><i class="fa fa-music"></i> 抖音</li>
+                    <li><i class="fa fa-weibo"></i> 微博</li>
+                    <li><i class="fa fa-github"></i> GitHub</li>
                 </ul>
                 <div class="layui-tab-content settings-tab-content">
 
@@ -236,105 +240,6 @@
                             @endif
                         </div>
 
-                        {{-- 微信设置 Tab --}}
-                        <div class="layui-tab-item">
-                            <div class="layui-form-item">
-                                <label class="layui-form-label">启用微信登录</label>
-                                <div class="layui-input-block">
-                                    <input type="checkbox" name="wechat_enabled" lay-skin="switch" lay-text="开启|关闭"
-                                           {{ ($configs['wechat_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
-                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示微信登录入口</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="wechat-appid-item">
-                                <label class="layui-form-label">公众号 AppID</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="wechat_mp_app_id" value="{{ $configs['wechat_mp_app_id'] ?? '' }}"
-                                           placeholder="wx..." class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppID，用于网页授权登录</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="wechat-secret-item">
-                                <label class="layui-form-label">公众号 AppSecret</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
-                                           placeholder="请输入 AppSecret" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppSecret，用于 code 换取 openid</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="wechat-oauth-item">
-                                <label class="layui-form-label">网页授权外挂</label>
-                                <div class="layui-input-block">
-                                    <input type="checkbox" name="wechat_oauth_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="wechat_oauth_enabled"
-                                           {{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
-                                    <div class="layui-form-mid layui-word-aux">微信「网页授权域名」配额有限时启用</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="wechat_oauth_url_row" style="{{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? '' : 'display:none;' }}">
-                                <label class="layui-form-label">外挂地址</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="wechat_oauth_url" value="{{ $configs['wechat_oauth_url'] ?? '' }}"
-                                           placeholder="https://oauth.example.com/wechat_oauth.php" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">
-                                        部署 <code>wechat_oauth.php</code> 的完整访问地址（参考 <code>https://gitee.com/holley/wechat_oauth</code>）。<br>
-                                        <strong>使用场景：</strong>公众号「网页授权域名」绑定数量受限时，将外挂脚本部署到已绑定域名下，多个站点共用同一授权入口。<br>
-                                        <strong>登录对接：</strong>开启后，用户在微信内点击「微信登录」时跳转到 <code>{外挂地址}?action=authorize&type=userinfo&return_url={统一登录回调地址}&state={state}</code>，外挂脚本完成授权后跳回统一登录回调地址 <code>/auth/wechat/callback</code> 并附带 <code>openid</code>、<code>state</code> 参数，获取昵称头像用于首次登录创建用户。
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {{-- QQ设置 Tab --}}
-                        <div class="layui-tab-item">
-                            <div class="layui-form-item">
-                                <label class="layui-form-label">启用QQ登录</label>
-                                <div class="layui-input-block">
-                                    <input type="checkbox" name="qq_enabled" lay-skin="switch" lay-text="开启|关闭"
-                                           {{ ($configs['qq_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
-                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示QQ登录入口</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="qq-mode-item">
-                                <label class="layui-form-label">功能选项</label>
-                                <div class="layui-input-block">
-                                    <div style="width: 200px;">
-                                        <select name="qq_mode" id="qq_mode">
-                                            <option value="qrcode" {{ ($configs['qq_mode'] ?? 'web') === 'qrcode' ? 'selected' : '' }}>QQ扫码登录</option>
-                                            <option value="web" {{ ($configs['qq_mode'] ?? 'web') === 'web' ? 'selected' : '' }}>QQ网页登录</option>
-                                        </select>
-                                    </div>
-                                    <div class="layui-form-mid layui-word-aux">QQ扫码登录：PC 端展示二维码，需使用QQ手机版扫一扫登录；QQ网页登录（默认）：跳转 QQ互联 OAuth2.0 认证页授权登录</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="qq-appid-item">
-                                <label class="layui-form-label">QQ互联 AppID</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="qq_app_id" value="{{ $configs['qq_app_id'] ?? '' }}"
-                                           placeholder="101xxxxxx" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的应用 AppID，用于网页授权登录</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="qq-appkey-item">
-                                <label class="layui-form-label">QQ互联 AppKey</label>
-                                <div class="layui-input-block">
-                                    <input type="text" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
-                                           placeholder="请输入 AppKey" class="layui-input">
-                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid</div>
-                                </div>
-                            </div>
-                            <div class="layui-form-item" id="qq-callback-item">
-                                <label class="layui-form-label"></label>
-                                <div class="layui-input-block">
-                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
-                                        <strong>回调地址：</strong>请在 QQ互联开放平台「网站应用」中，将授权回调域配置为当前系统的回调地址。<br>
-                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/qq/callback</code><br>
-                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/qq/callback</code>（默认路径前缀为 <code>sso</code>）<br>
-                                        <strong>首次登录：</strong>QQ 授权成功后需完善资料并绑定邀请码，与微信登录流程一致。
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         {{-- 手机登录 Tab --}}
                         <div class="layui-tab-item">
                             <div class="layui-form-item">
@@ -461,6 +366,260 @@
                             </div>
                         </div>
 
+                        {{-- 微信设置 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用微信登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="wechat_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['wechat_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示微信登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="wechat-appid-item">
+                                <label class="layui-form-label">公众号 AppID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="wechat_mp_app_id" value="{{ $configs['wechat_mp_app_id'] ?? '' }}"
+                                           placeholder="wx..." class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppID，用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="wechat-secret-item">
+                                <label class="layui-form-label">公众号 AppSecret</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="wechat_mp_app_secret" value="{{ $configs['wechat_mp_app_secret'] ?? '' }}"
+                                           placeholder="请输入 AppSecret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微信公众平台的 AppSecret，用于 code 换取 openid</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="wechat-oauth-item">
+                                <label class="layui-form-label">网页授权外挂</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="wechat_oauth_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="wechat_oauth_enabled"
+                                           {{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">微信「网页授权域名」配额有限时启用</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="wechat_oauth_url_row" style="{{ ($configs['wechat_oauth_enabled'] ?? '0') === '1' ? '' : 'display:none;' }}">
+                                <label class="layui-form-label">外挂地址</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="wechat_oauth_url" value="{{ $configs['wechat_oauth_url'] ?? '' }}"
+                                           placeholder="https://oauth.example.com/wechat_oauth.php" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">
+                                        部署 <code>wechat_oauth.php</code> 的完整访问地址（参考 <code>https://gitee.com/holley/wechat_oauth</code>）。<br>
+                                        <strong>使用场景：</strong>公众号「网页授权域名」绑定数量受限时，将外挂脚本部署到已绑定域名下，多个站点共用同一授权入口。<br>
+                                        <strong>登录对接：</strong>开启后，用户在微信内点击「微信登录」时跳转到 <code>{外挂地址}?action=authorize&type=userinfo&return_url={统一登录回调地址}&state={state}</code>，外挂脚本完成授权后跳回统一登录回调地址 <code>/auth/wechat/callback</code> 并附带 <code>openid</code>、<code>state</code> 参数，获取昵称头像用于首次登录创建用户。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- QQ设置 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用QQ登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="qq_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['qq_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示QQ登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="qq-mode-item">
+                                <label class="layui-form-label">功能选项</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                        <select name="qq_mode" id="qq_mode">
+                                            <option value="qrcode" {{ ($configs['qq_mode'] ?? 'web') === 'qrcode' ? 'selected' : '' }}>QQ扫码登录</option>
+                                            <option value="web" {{ ($configs['qq_mode'] ?? 'web') === 'web' ? 'selected' : '' }}>QQ网页登录</option>
+                                        </select>
+                                    </div>
+                                    <div class="layui-form-mid layui-word-aux">QQ扫码登录：PC 端展示二维码，需使用QQ手机版扫一扫登录；QQ网页登录（默认）：跳转 QQ互联 OAuth2.0 认证页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="qq-appid-item">
+                                <label class="layui-form-label">QQ互联 AppID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="qq_app_id" value="{{ $configs['qq_app_id'] ?? '' }}"
+                                           placeholder="101xxxxxx" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的应用 AppID，用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="qq-appkey-item">
+                                <label class="layui-form-label">QQ互联 AppKey</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="qq_app_key" value="{{ $configs['qq_app_key'] ?? '' }}"
+                                           placeholder="请输入 AppKey" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">QQ互联开放平台的 AppKey（AppSecret），用于 code 换取 openid</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="qq-callback-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在 QQ互联开放平台「网站应用」中，将授权回调域配置为当前系统的回调地址。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/qq/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/qq/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>QQ 授权成功后需完善资料并绑定邀请码，与微信登录流程一致。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 支付宝 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用支付宝登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="alipay_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['alipay_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示支付宝登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="alipay-appid-item">
+                                <label class="layui-form-label">支付宝 AppID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="alipay_app_id" value="{{ $configs['alipay_app_id'] ?? '' }}"
+                                           placeholder="2021000000000000" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">支付宝开放平台「网页/移动应用」的 AppID，用于网页授权登录（RSA2 签名）</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="alipay-private-key-item">
+                                <label class="layui-form-label">应用私钥</label>
+                                <div class="layui-input-block">
+                                    <textarea name="alipay_private_key" class="layui-textarea" placeholder="-----BEGIN RSA PRIVATE KEY-----" style="height: 120px;">{{ $configs['alipay_private_key'] ?? '' }}</textarea>
+                                    <div class="layui-form-mid layui-word-aux">支付宝开放平台生成的应用私钥（RSA2），用于签名单个授权请求</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="alipay-callback-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在支付宝开放平台的「授权回调地址」中填入本站支付宝登录回调地址（授权后平台回调）。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/alipay/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/alipay/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>支付宝授权成功后需完善资料并绑定邀请码，与其他社交登录流程一致。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 抖音 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用抖音登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="douyin_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['douyin_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示抖音登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="douyin-client-key-item">
+                                <label class="layui-form-label">抖音 Client Key</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="douyin_client_key" value="{{ $configs['douyin_client_key'] ?? '' }}"
+                                           placeholder="a1b2c3d4..." class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">抖音开放平台应用的 Client Key（应用标识），用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="douyin-client-secret-item">
+                                <label class="layui-form-label">抖音 Client Secret</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="douyin_client_secret" value="{{ $configs['douyin_client_secret'] ?? '' }}"
+                                           placeholder="请输入 Client Secret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">抖音开放平台应用的 Client Secret，用于授权后换取用户信息</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="douyin-callback-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在抖音开放平台将「授权回调地址」配置为本站抖音登录回调地址。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/douyin/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/douyin/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>抖音授权成功后需完善资料并绑定邀请码，与其他社交登录流程一致。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- 微博 Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用微博登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="weibo_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['weibo_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示微博登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="weibo-app-key-item">
+                                <label class="layui-form-label">微博 App Key</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="weibo_app_key" value="{{ $configs['weibo_app_key'] ?? '' }}"
+                                           placeholder="1234567890" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微博开放平台的 App Key（应用标识），用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="weibo-app-secret-item">
+                                <label class="layui-form-label">微博 App Secret</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="weibo_app_secret" value="{{ $configs['weibo_app_secret'] ?? '' }}"
+                                           placeholder="请输入 App Secret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">微博开放平台的 App Secret，用于授权后换取用户信息</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="weibo-callback-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在微博开放平台将「OAuth2.0 授权回调页」配置为本站微博登录回调地址。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/weibo/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/weibo/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>微博授权成功后需完善资料并绑定邀请码，与其他社交登录流程一致。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- GitHub Tab --}}
+                        <div class="layui-tab-item">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">启用 GitHub 登录</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="github_enabled" lay-skin="switch" lay-text="开启|关闭"
+                                           {{ ($configs['github_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示 GitHub 登录入口</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="github-client-id-item">
+                                <label class="layui-form-label">GitHub Client ID</label>
+                                <div class="layui-input-block">
+                                    <input type="text" name="github_client_id" value="{{ $configs['github_client_id'] ?? '' }}"
+                                           placeholder="Iv1.xxxxxxxx..." class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">GitHub OAuth App 的 Client ID，用于网页授权登录</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="github-client-secret-item">
+                                <label class="layui-form-label">GitHub Client Secret</label>
+                                <div class="layui-input-block">
+                                    <input type="password" name="github_client_secret" value="{{ $configs['github_client_secret'] ?? '' }}"
+                                           placeholder="请输入 Client Secret" class="layui-input">
+                                    <div class="layui-form-mid layui-word-aux">GitHub OAuth App 的 Client Secret，用于授权后换取用户信息</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item" id="github-callback-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #12b7f5; background: #e6f7ff; color: #05506b; font-size: 13px; line-height: 1.8;">
+                                        <strong>回调地址：</strong>请在 GitHub OAuth App 的「Authorization callback URL」中填入本站 GitHub 登录回调地址。<br>
+                                        <strong>子域名模式：</strong><code>http://{绑定域名}/auth/github/callback</code><br>
+                                        <strong>路径模式：</strong><code>http://{当前域名}/{访问路径}/auth/github/callback</code>（默认路径前缀为 <code>sso</code>）<br>
+                                        <strong>首次登录：</strong>GitHub 授权成功后需完善资料并绑定邀请码，与其他社交登录流程一致。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         {{-- 提交按钮 --}}
                         <div style="padding: 20px 0; text-align: center;">
                             <button type="button" class="layui-btn layui-btn-lg" id="save-settings">
@@ -527,9 +686,13 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     function toggleQuickModeFields(mode) {
         $('#quick-mode-server-item').toggle(mode === 'server');
         $('#relay-server-url-item, #relay-client-id-item, #relay-client-secret-item, #relay-callback-item').toggle(mode === 'client');
-        // 客户端模式下本地社交登录走服务端中转，微信/QQ 仅保留启用开关，隐藏本地凭证配置
+        // 客户端模式下本地社交登录走服务端中转，微信/QQ/支付宝/抖音/微博/GitHub 仅保留启用开关，隐藏本地凭证配置
         var isClient = (mode === 'client');
-        $('#wechat-appid-item, #wechat-secret-item, #wechat-oauth-item, #qq-mode-item, #qq-appid-item, #qq-appkey-item, #qq-callback-item').toggle(!isClient);
+        $('#wechat-appid-item, #wechat-secret-item, #wechat-oauth-item, #qq-mode-item, #qq-appid-item, #qq-appkey-item, #qq-callback-item'
+            + ', #alipay-appid-item, #alipay-private-key-item, #alipay-callback-item'
+            + ', #douyin-client-key-item, #douyin-client-secret-item, #douyin-callback-item'
+            + ', #weibo-app-key-item, #weibo-app-secret-item, #weibo-callback-item'
+            + ', #github-client-id-item, #github-client-secret-item, #github-callback-item').toggle(!isClient);
         if (isClient) {
             $('#wechat_oauth_url_row').hide();
         } else {
@@ -557,7 +720,7 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     toggleSmsProviderFields($('#sms_provider').val());
 
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
-    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled'];
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'alipay_enabled', 'douyin_enabled', 'weibo_enabled', 'github_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled'];
 
     $('#save-settings').on('click', function() {
         var formData = {};

@@ -34,6 +34,12 @@ class AuthController extends Controller
             'qq_configured'   => $this->settingService->isQqConfigured() ? '1' : '0',
             'phone_login_enabled' => $this->settingService->isPhoneLoginEnabled() ? '1' : '0',
             'email_login_enabled' => $this->settingService->isEmailLoginEnabled() ? '1' : '0',
+            'alipay_enabled'  => $this->settingService->get('alipay_enabled', '0'),
+            'douyin_enabled'  => $this->settingService->get('douyin_enabled', '0'),
+            'weibo_enabled'   => $this->settingService->get('weibo_enabled', '0'),
+            'github_enabled'  => $this->settingService->get('github_enabled', '0'),
+            // 快捷模式中转客户端：社交登录由服务端代跳，仅微信/QQ 受中转支持，其余平台入口隐藏
+            'is_relay_client' => $this->settingService->isRelayClient() ? '1' : '0',
             'allow_register'  => $this->settingService->get('allow_register', '1'),
             'invite_enabled'  => $this->settingService->get('invite_enabled', '0'),
         ];
@@ -127,6 +133,42 @@ class AuthController extends Controller
     }
 
     /**
+     * 支付宝授权回调（页面转发给 HomeApi 处理）
+     */
+    public function alipayCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->alipayCallback($request);
+    }
+
+    /**
+     * 抖音授权回调（页面转发给 HomeApi 处理）
+     */
+    public function douyinCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->douyinCallback($request);
+    }
+
+    /**
+     * 微博授权回调（页面转发给 HomeApi 处理）
+     */
+    public function weiboCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->weiboCallback($request);
+    }
+
+    /**
+     * GitHub 授权回调（页面转发给 HomeApi 处理）
+     */
+    public function githubCallback(Request $request)
+    {
+        return app(\App\Apps\CmsproSso\Controllers\HomeApi\AuthController::class)
+            ->githubCallback($request);
+    }
+
+    /**
      * 快捷模式中转回调（页面转发给 HomeApi 处理）
      */
     public function relayCallback(Request $request)
@@ -152,7 +194,7 @@ class AuthController extends Controller
     public function completeInviteForm(Request $request)
     {
         $token = (string) $request->input('token', '');
-        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
+        $platform = $this->platformFromPath($request->path());
 
         return view('cmspro.sso::Home.auth.complete-invite', [
             'token'    => $token,
@@ -169,7 +211,7 @@ class AuthController extends Controller
     public function completeForm(Request $request)
     {
         $user = auth('web')->user();
-        $platform = str_contains($request->path(), 'qq') ? 'qq' : (str_contains($request->path(), 'relay') ? 'relay' : 'wechat');
+        $platform = $this->platformFromPath($request->path());
         $token = (string) $request->input('token', '');
 
         // relay 分流页无需登录态（凭 token 完成建号/绑定），其他平台需已登录
@@ -205,6 +247,24 @@ class AuthController extends Controller
         return view('cmspro.sso::Home.home', [
             'user' => $user,
         ]);
+    }
+
+    /**
+     * 从请求路径解析社交平台标识（complete-invite / complete 页通用）
+     *
+     * 路径形如 /auth/{platform}/complete-invite 或 /auth/{platform}/complete，
+     * 优先精确匹配已知平台，避免子串误判（如 github 含 'qq' 吗？不含，但 alipay 含 'ali' 等）；
+     * relay 与未知平台保持原样返回，由调用方兜底。
+     */
+    protected function platformFromPath(string $path): string
+    {
+        foreach (['alipay', 'douyin', 'weibo', 'github', 'wechat', 'qq'] as $platform) {
+            if (preg_match('#/auth/' . $platform . '/#', $path)) {
+                return $platform;
+            }
+        }
+
+        return str_contains($path, 'relay') ? 'relay' : 'wechat';
     }
 
     /**

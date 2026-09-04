@@ -2543,6 +2543,121 @@ class AuthController extends Controller
     }
 
     /**
+     * 独立站完善资料页 Tab2：将当前登录账号持有的该平台第三方绑定转移到目标既有账号，并切换登录态
+     *
+     * 适用场景：首次社交登录已自动建号并建立登录态，用户选择「账号绑定」输入既有账号+密码，
+     * 校验通过后把当前平台 openid 的绑定关系改挂到目标账号，随后以目标账号登录。
+     * 失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
+     *
+     * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github），由路由 {platform} 注入
+     */
+    public function bindToExistingAccount(Request $request, string $platform): JsonResponse
+    {
+        // 仅对独立站社交平台开放（与 relay 快捷模式绑定时沿用既有 bindAccount 流程）
+        if (!in_array($platform, ['wechat', 'qq', 'alipay', 'douyin', 'weibo', 'github'], true)) {
+            return response()->json(['code' => 400, 'message' => '不支持的绑定平台'], 400);
+        }
+
+        $user = auth('web')->user();
+        if (!$user) {
+            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        }
+
+        $validated = $request->validate([
+            'account'  => 'required|string',
+            'password' => 'required|string',
+        ], [
+            'account.required'  => '请输入账号',
+            'password.required' => '请输入密码',
+        ]);
+
+        // 当前登录账号必须持有该平台的第三方绑定（首次社交登录自动建号时已建立）
+        $binding = UserThirdParty::where('user_id', $user->id)
+            ->where('platform', $platform)
+            ->first();
+        if (!$binding) {
+            return response()->json(['code' => 400, 'message' => '当前账号未绑定该平台，无法完成绑定'], 400);
+        }
+        $openid = (string) $binding->open_id;
+
+        $account = $validated['account'];
+        $lockKey = 'cmspro_sso_login_lock:' . md5(strtolower($account));
+
+        // 账号已被锁定
+        if (Cache::has($lockKey)) {
+            $remaining = (int) ceil(Cache::get($lockKey) / 60);
+
+            return response()->json([
+                'code'    => 429,
+                'message' => '登录失败次数过多，请 ' . $remaining . ' 分钟后再试',
+            ], 429);
+        }
+
+        // 仅取身份字段（用户名/手机号/邮箱）查询，密码单独校验
+        $identity = $this->resolveCredentials($account, '');
+        unset($identity['password']);
+
+        $target = User::where($identity)
+            ->where('status', 1)
+            ->first();
+        if (!$target || !Hash::check($validated['password'], $target->password)) {
+            // 与账号密码登录共用失败计数与锁定策略
+            $failKey = 'cmspro_sso_login_fail:' . md5(strtolower($account));
+            $failures = (int) Cache::get($failKey, 0) + 1;
+            if ($failures >= self::MAX_FAILURES) {
+                Cache::put($lockKey, self::LOCK_MINUTES * 60, self::LOCK_MINUTES * 60);
+                Cache::forget($failKey);
+
+                return response()->json([
+                    'code'    => 429,
+                    'message' => '登录失败次数过多，账号已锁定 ' . self::LOCK_MINUTES . ' 分钟',
+                ], 429);
+            }
+            Cache::put($failKey, $failures, self::LOCK_MINUTES * 60);
+
+            return response()->json(['code' => 400, 'message' => '账号或密码错误'], 400);
+        }
+
+        // 并发下绑定关系可能已被改动，复查：该 openid 仍挂在我名下才可转移
+        $current = UserThirdParty::where('platform', $platform)
+            ->where('open_id', $openid)
+            ->first();
+        if (!$current || (int) $current->user_id !== (int) $user->id) {
+            return response()->json(['code' => 400, 'message' => '该平台身份已绑定其他账号，请直接登录'], 400);
+        }
+
+        // 目标账号已是当前账号 / 已绑定同一身份，无需转移，直接切换登录态即可
+        if ((int) $current->user_id === (int) $target->id) {
+            Cache::forget($lockKey);
+            Auth::guard('web')->login($target);
+            $request->session()->regenerate();
+
+            return response()->json([
+                'code'    => 0,
+                'message' => '绑定成功',
+                'data'    => ['redirect' => $this->resolveRedirect($request)],
+            ]);
+        }
+
+        // 转移绑定关系到目标账号并切换登录态
+        DB::transaction(function () use ($current, $target) {
+            $current->update(['user_id' => $target->id]);
+        });
+        Cache::forget($lockKey);
+        Auth::guard('web')->login($target);
+        $request->session()->regenerate();
+        $target->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($target->id, $platform, $request, 1, '社交登录绑定既有账号');
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '绑定成功',
+            'data'    => ['redirect' => $this->resolveRedirect($request)],
+        ]);
+    }
+
+    /**
      * 预校验邀请码可用性（不消费），用于微信登录获取授权 URL 前的提前反馈
      */
     protected function checkInviteCodeUsable(string $code): ?string

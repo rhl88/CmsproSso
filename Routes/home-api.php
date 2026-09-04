@@ -48,6 +48,9 @@ Route::post('/auth/relay/setup', [AuthController::class, 'setupAccount']);
 Route::post('/auth/relay/bind', [AuthController::class, 'bindAccount']);
 Route::post('/auth/relay/complete', [AuthController::class, 'completeProfile']);
 
+// 独立站完善资料页：账号绑定（将当前平台第三方绑定转移到目标既有账号并切换登录，仅微信/QQ/支付宝/抖音/微博/GitHub 开放）
+Route::post('/auth/{platform}/bind-existing', [AuthController::class, 'bindToExistingAccount']);
+
 // 手机验证码登录 API
 Route::post('/auth/phone/code', [AuthController::class, 'sendPhoneCode']);
 Route::post('/auth/phone/login', [AuthController::class, 'phoneLogin']);

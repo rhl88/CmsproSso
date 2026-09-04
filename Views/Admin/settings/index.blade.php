@@ -602,7 +602,7 @@
                             <div class="layui-form-item" id="github-client-secret-item">
                                 <label class="layui-form-label">GitHub Client Secret</label>
                                 <div class="layui-input-block">
-                                    <input type="password" name="github_client_secret" value="{{ $configs['github_client_secret'] ?? '' }}"
+                                    <input type="text" name="github_client_secret" value="{{ $configs['github_client_secret'] ?? '' }}"
                                            placeholder="请输入 Client Secret" class="layui-input">
                                     <div class="layui-form-mid layui-word-aux">GitHub OAuth App 的 Client Secret，用于授权后换取用户信息</div>
                                 </div>

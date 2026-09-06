@@ -559,9 +559,7 @@ class AuthController extends Controller
             'code'    => 0,
             'message' => '登录成功',
             'data'    => [
-                'redirect' => $isNew
-                    ? $this->completeUrl((string) $request->input('redirect', ''))
-                    : $this->resolveRedirect($request),
+                'redirect' => $this->resolveRedirect($request),
                 'is_new'   => $isNew,
             ],
         ]);
@@ -1274,20 +1272,21 @@ class AuthController extends Controller
                 return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success?result=invite'));
             }
 
-            try {
-                [$user, $isNew] = $this->resolveOrCreateUser($data, '', $platform);
-            } catch (\RuntimeException $e) {
-                // 建号错误：结果存 Cache 供 PC 端轮询展示，提示页显示失败态
+            // 新用户（未开启邀请注册）：不建号，结果存 Cache，PC 端轮询到 need_setup 后跳分流页
+            if ($existingUser === null) {
+                $token = bin2hex(random_bytes(16));
+                Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
                 Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
-                    'error' => $e->getMessage(),
+                    'need_setup'  => true,
+                    'setup_token' => $token,
                 ], self::LOGIN_STATE_TTL);
 
-                return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success?result=failed'));
+                return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success?result=setup'));
             }
 
+            // 老用户：结果存 Cache 供 PC 端轮询建立登录态
             Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
-                'user_id' => $user->id,
-                'is_new'  => $isNew,
+                'user_id' => $existingUser->id,
             ], self::LOGIN_STATE_TTL);
 
             return redirect(ShareService::frontUrl('/auth/' . $platform . '/pc-success'));
@@ -1296,6 +1295,9 @@ class AuthController extends Controller
         // 普通模式（平台内/手机浏览器）：新用户且开启邀请注册时，redirect 到邀请码填写页
         // 登录页携带的跳转地址已在授权前暂存 session，此处取回并继续透传
         $redirect = (string) $request->session()->pull($redirectKey, '');
+
+        // 回调路由即平台真相源，统一覆写授权数据中的平台标识（外挂模式硬编码 wechat 的防御性统一）
+        $data['platform'] = $platform;
 
         if ($needInvite) {
             $token = bin2hex(random_bytes(16));
@@ -1309,7 +1311,15 @@ class AuthController extends Controller
             return redirect($inviteUrl);
         }
 
-        // 老用户或未开启邀请注册：login 并 redirect
+        // 新用户（未开启邀请注册）：不再自动建号，授权数据暂存 Cache，跳分流页（完善资料 / 账号绑定）
+        if ($existingUser === null) {
+            $token = bin2hex(random_bytes(16));
+            Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+
+            return redirect($this->pendingCompleteUrl($token, $redirect, $platform));
+        }
+
+        // 老用户：login 并 redirect
         try {
             return $this->loginOrCreateUser($request, $data, '', $redirect, $platform);
         } catch (\RuntimeException $e) {
@@ -1699,6 +1709,22 @@ class AuthController extends Controller
             ]);
         }
 
+        // 新用户且未开启邀请注册：返回 need_setup，PC 端跳分流页（完善资料 / 账号绑定）。
+        // 不清理结果 Cache，过期前轮询可重复获得该状态（与 need_invite 一致）。
+        if (!empty($result['need_setup'])) {
+            $setupUrl = $this->pendingCompleteUrl(
+                (string) ($result['setup_token'] ?? ''),
+                (string) $request->input('redirect', ''),
+                $platform
+            );
+
+            return response()->json([
+                'code'    => 0,
+                'message' => 'ok',
+                'data'    => ['logged_in' => false, 'need_setup' => true, 'setup_url' => $setupUrl],
+            ]);
+        }
+
         // 已登录：清理 Cache，在 PC 端建立登录态
         Cache::forget(self::CACHE_LOGIN_RESULT_PREFIX . $state);
 
@@ -1708,7 +1734,6 @@ class AuthController extends Controller
         }
 
         $userId = (int) ($result['user_id'] ?? 0);
-        $isNew = (bool) ($result['is_new'] ?? false);
         $user = User::find($userId);
         if (!$user) {
             return response()->json(['code' => 400, 'message' => '用户不存在'], 400);
@@ -1725,10 +1750,7 @@ class AuthController extends Controller
             'message' => '登录成功',
             'data'    => [
                 'logged_in' => true,
-                'is_new'    => $isNew,
-                'redirect'  => $isNew
-                    ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
-                    : $this->resolveRedirect($request),
+                'redirect'  => $this->resolveRedirect($request),
             ],
         ]);
     }
@@ -2119,7 +2141,10 @@ class AuthController extends Controller
     }
 
     /**
-     * 统一处理：根据 openid 查找已绑定用户登录，或首次登录创建用户并绑定
+     * 已绑定老用户社交登录（建立登录态并跳转）
+     *
+     * 仅处理 findOauthUser 已命中的老用户；新用户一律经授权数据暂存 +
+     * 分流页（完善资料 / 账号绑定）完成建号或绑定，不再自动建号。
      *
      * @param Request $request
      * @param array $data 必须包含 openid，可选 unionid/nickname/avatar/access_token/refresh_token/raw_data
@@ -2130,7 +2155,7 @@ class AuthController extends Controller
     protected function loginOrCreateUser(Request $request, array $data, string $inviteCode = '', string $redirect = '', string $platform = 'wechat')
     {
         try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, $inviteCode, $platform);
+            [$user] = $this->resolveOrCreateUser($data, $inviteCode, $platform);
         } catch (\RuntimeException $e) {
             // 建号失败（如邀请码消费失败）时未建立登录态，异常交由调用方处理
             throw $e;
@@ -2141,11 +2166,6 @@ class AuthController extends Controller
         $user->incrementLoginCount($request->ip());
 
         $this->writeLoginLog($user->id, $platform, $request, 1, $platform === 'qq' ? 'QQ登录成功' : '微信登录成功');
-
-        // 首次社交登录需完善资料（手机号、昵称），跳转地址随 URL 继续透传
-        if ($isNew) {
-            return redirect($this->completeUrl($redirect, $platform));
-        }
 
         return redirect($this->resolveRedirect($request, $redirect));
     }
@@ -2198,7 +2218,7 @@ class AuthController extends Controller
         $platform = (string) ($data['platform'] ?? 'wechat');
 
         try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, $validated['invite_code'], $platform);
+            [$user] = $this->resolveOrCreateUser($data, $validated['invite_code'], $platform);
         } catch (\RuntimeException $e) {
             // 邀请码无效等：授权数据放回，允许用户重新填写
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $validated['token'], $data, self::LOGIN_STATE_TTL);
@@ -2216,9 +2236,7 @@ class AuthController extends Controller
             'code'    => 0,
             'message' => '登录成功',
             'data'    => [
-                'redirect' => $isNew
-                    ? $this->completeUrl((string) $request->input('redirect', ''), $platform)
-                    : $this->resolveRedirect($request),
+                'redirect' => $this->resolveRedirect($request),
             ],
         ]);
     }
@@ -2236,6 +2254,20 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '快捷模式客户端未开启'], 400);
         }
 
+        return $this->createAccountFromToken($request, (string) $request->input('token', ''), 'relay', '快捷登录注册成功');
+    }
+
+    /**
+     * 凭授权句柄创建账号（社交新用户分流页「完善资料」Tab 通用，relay 与独立站社交平台共用）
+     *
+     * 凭 token 取回暂存的授权数据，创建本地账号并绑定该平台身份，补充分流页填写的
+     * 昵称/手机号后建立登录态。建号失败（如并发下绑定已存在）时授权数据放回允许重试。
+     *
+     * @param string $expectedPlatform 期望的授权数据平台标识（relay/wechat/qq/...）
+     * @param string $logMessage 登录日志描述文案
+     */
+    protected function createAccountFromToken(Request $request, string $token, string $expectedPlatform, string $logMessage): JsonResponse
+    {
         $validated = $request->validate([
             'token'    => 'required|string|size:32',
             'nickname' => 'nullable|string|max:50',
@@ -2243,12 +2275,12 @@ class AuthController extends Controller
         ]);
 
         $data = Cache::pull(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
-        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== 'relay') {
+        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== $expectedPlatform) {
             return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
         }
 
         try {
-            [$user, $isNew] = $this->resolveOrCreateUser($data, '', 'relay');
+            [$user] = $this->resolveOrCreateUser($data, '', $expectedPlatform);
         } catch (\RuntimeException $e) {
             // 建号失败（如并发下绑定已存在等）：授权数据放回，允许用户重试
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $validated['token'], $data, self::LOGIN_STATE_TTL);
@@ -2257,13 +2289,10 @@ class AuthController extends Controller
         }
 
         // 建号成功后补充用户在分流页填写的昵称/手机号
-        $profile = [];
-        if (!empty($validated['nickname'])) {
-            $profile['nickname'] = $validated['nickname'];
-        }
-        if (!empty($validated['phone'])) {
-            $profile['phone'] = $validated['phone'];
-        }
+        $profile = array_filter([
+            'nickname' => (string) ($validated['nickname'] ?? ''),
+            'phone'    => (string) ($validated['phone'] ?? ''),
+        ]);
         if (!empty($profile)) {
             $user->update($profile);
         }
@@ -2272,7 +2301,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
-        $this->writeLoginLog($user->id, 'relay', $request, 1, '快捷登录注册成功');
+        $this->writeLoginLog($user->id, $expectedPlatform, $request, 1, $logMessage);
 
         return response()->json([
             'code'    => 0,
@@ -2286,7 +2315,6 @@ class AuthController extends Controller
      *
      * 客户端完善资料页 Tab2 提交：凭账号（用户名/手机号/邮箱）+ 密码校验已有账号，
      * 校验通过后将 relay 身份绑定到该账号并切换登录态。
-     * 失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
      */
     public function bindAccount(Request $request): JsonResponse
     {
@@ -2294,6 +2322,20 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '快捷模式客户端未开启'], 400);
         }
 
+        return $this->bindTokenToAccount($request, (string) $request->input('token', ''), 'relay', '快捷登录绑定已有账号');
+    }
+
+    /**
+     * 凭授权句柄绑定既有账号（社交新用户分流页「账号绑定」Tab 通用，relay 与独立站社交平台共用）
+     *
+     * 凭账号（用户名/手机号/邮箱）+ 密码校验已有账号，校验通过后将该平台身份
+     * 绑定到该账号并切换登录态。失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
+     *
+     * @param string $expectedPlatform 期望的授权数据平台标识（relay/wechat/qq/...）
+     * @param string $logMessage 登录日志描述文案
+     */
+    protected function bindTokenToAccount(Request $request, string $token, string $expectedPlatform, string $logMessage): JsonResponse
+    {
         $validated = $request->validate([
             'token'    => 'required|string|size:32',
             'account'  => 'required|string',
@@ -2304,11 +2346,48 @@ class AuthController extends Controller
         ]);
 
         $data = Cache::get(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
-        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== 'relay') {
+        if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== $expectedPlatform) {
             return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
         }
 
-        $account = $validated['account'];
+        $result = $this->verifyBindCredentials($validated['account'], $validated['password']);
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        $target = $result;
+
+        // 校验通过，消费授权数据（并发下绑定关系可能已被建立，openid 已被绑定时拒绝）
+        $openid = (string) $data['openid'];
+        if (!$this->bindOauthToUser($data, $openid, $target, $expectedPlatform)) {
+            Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+
+            return response()->json(['code' => 400, 'message' => '该平台身份已绑定其他账号，请直接登录'], 400);
+        }
+        Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+
+        Auth::guard('web')->login($target);
+        $request->session()->regenerate();
+        $target->incrementLoginCount($request->ip());
+
+        $this->writeLoginLog($target->id, $expectedPlatform, $request, 1, $logMessage);
+
+        return response()->json([
+            'code'    => 0,
+            'message' => '绑定成功',
+            'data'    => ['redirect' => $this->resolveRedirect($request)],
+        ]);
+    }
+
+    /**
+     * 绑定场景的账号密码校验（账号锁定检查 + 密码验证 + 失败计数）
+     *
+     * 校验失败时返回错误响应（429 锁定 / 400 密码错误），成功返回目标用户。
+     * 失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
+     *
+     * @return User|JsonResponse
+     */
+    protected function verifyBindCredentials(string $account, string $password): object
+    {
         $lockKey = 'cmspro_sso_login_lock:' . md5(strtolower($account));
 
         // 账号已被锁定
@@ -2328,7 +2407,7 @@ class AuthController extends Controller
         $target = User::where($identity)
             ->where('status', 1)
             ->first();
-        if (!$target || !Hash::check($validated['password'], $target->password)) {
+        if (!$target || !Hash::check($password, $target->password)) {
             // 与账号密码登录共用失败计数与锁定策略
             $failKey = 'cmspro_sso_login_fail:' . md5(strtolower($account));
             $failures = (int) Cache::get($failKey, 0) + 1;
@@ -2346,41 +2425,34 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '账号或密码错误'], 400);
         }
 
-        // 校验通过，消费授权数据（并发下绑定关系可能已被建立，需复查）
-        $openid = (string) $data['openid'];
-        $conflict = UserThirdParty::where('platform', 'relay')->where('open_id', $openid)->first();
-        if ($conflict) {
-            Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
+        return $target;
+    }
 
-            return response()->json(['code' => 400, 'message' => '该快捷登录身份已绑定其他账号，请直接登录'], 400);
+    /**
+     * 将社交身份绑定到目标账号（并发安全：openid 已被绑定时返回 false，不落库）
+     */
+    protected function bindOauthToUser(array $data, string $openid, User $target, string $platform): bool
+    {
+        $conflict = UserThirdParty::where('platform', $platform)->where('open_id', $openid)->first();
+        if ($conflict) {
+            return false;
         }
 
-        DB::transaction(function () use ($data, $openid, $target) {
+        DB::transaction(function () use ($data, $openid, $target, $platform) {
             UserThirdParty::create([
                 'user_id'        => $target->id,
-                'platform'       => 'relay',
+                'platform'       => $platform,
                 'open_id'        => $openid,
                 'union_id'       => $data['unionid'] ?? null,
                 'nickname'       => $data['nickname'] ?? null,
-                'avatar'         => $data['avatar'] !== '' ? $data['avatar'] : null,
+                'avatar'         => ($data['avatar'] ?? '') !== '' ? $data['avatar'] : null,
                 'access_token'   => $data['access_token'] ?? null,
                 'refresh_token'  => $data['refresh_token'] ?? null,
                 'raw_data'       => $data['raw_data'] ?? null,
             ]);
         });
-        Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
 
-        Auth::guard('web')->login($target);
-        $request->session()->regenerate();
-        $target->incrementLoginCount($request->ip());
-
-        $this->writeLoginLog($target->id, 'relay', $request, 1, '快捷登录绑定已有账号');
-
-        return response()->json([
-            'code'    => 0,
-            'message' => '绑定成功',
-            'data'    => ['redirect' => $this->resolveRedirect($request)],
-        ]);
+        return true;
     }
 
     /**
@@ -2509,152 +2581,45 @@ class AuthController extends Controller
     }
 
     /**
-     * 首次微信登录完善资料（手机号、昵称）
+     * 独立站社交新用户分流页「完善资料」Tab：凭授权句柄创建账号并登录
+     *
+     * OAuth 回调发现新用户时不再自动建号，授权数据暂存 Cache 后跳分流页；
+     * 用户选择「完善资料」凭 token 建号，选择「账号绑定」走 bindToExistingAccount。
+     *
+     * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github），由路由 {platform} 注入
      */
-    public function completeProfile(Request $request): JsonResponse
+    public function completeProfile(Request $request, string $platform): JsonResponse
     {
-        $user = auth('web')->user();
-        if (!$user) {
-            return response()->json(['code' => 401, 'message' => '未登录'], 401);
+        // 仅对独立站社交平台开放（relay 快捷模式建号沿用既有 setupAccount 流程）
+        if (!in_array($platform, ['wechat', 'qq', 'alipay', 'douyin', 'weibo', 'github'], true)) {
+            return response()->json(['code' => 400, 'message' => '不支持的登录平台'], 400);
         }
 
-        $validated = $request->validate([
-            'phone'    => 'nullable|string|max:20',
-            'nickname' => 'nullable|string|max:50',
-        ]);
-
-        $update = [];
-        if (!empty($validated['phone'])) {
-            $update['phone'] = $validated['phone'];
-        }
-        if (!empty($validated['nickname'])) {
-            $update['nickname'] = $validated['nickname'];
-        }
-
-        if (!empty($update)) {
-            $user->update($update);
-        }
-
-        return response()->json([
-            'code'    => 0,
-            'message' => '资料已完善',
-            'data'    => ['redirect' => $this->resolveRedirect($request)],
-        ]);
+        return $this->createAccountFromToken(
+            $request,
+            (string) $request->input('token', ''),
+            $platform,
+            SettingService::platformLabel($platform) . '登录注册成功'
+        );
     }
 
     /**
-     * 独立站完善资料页 Tab2：将当前登录账号持有的该平台第三方绑定转移到目标既有账号，并切换登录态
+     * 独立站社交新用户分流页「账号绑定」Tab：凭授权句柄将社交身份绑定到既有账号并登录
      *
-     * 适用场景：首次社交登录已自动建号并建立登录态，用户选择「账号绑定」输入既有账号+密码，
-     * 校验通过后把当前平台 openid 的绑定关系改挂到目标账号，随后以目标账号登录。
+     * OAuth 回调发现新用户时不再自动建号，授权数据暂存 Cache 后跳分流页；
+     * 用户选择「账号绑定」输入既有账号+密码，校验通过后将该平台身份绑定到目标账号并登录。
      * 失败锁定策略与账号密码登录一致（连续失败 5 次锁定 15 分钟）。
      *
      * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github），由路由 {platform} 注入
      */
     public function bindToExistingAccount(Request $request, string $platform): JsonResponse
     {
-        // 仅对独立站社交平台开放（与 relay 快捷模式绑定时沿用既有 bindAccount 流程）
+        // 仅对独立站社交平台开放（relay 快捷模式绑定时沿用既有 bindAccount 流程）
         if (!in_array($platform, ['wechat', 'qq', 'alipay', 'douyin', 'weibo', 'github'], true)) {
             return response()->json(['code' => 400, 'message' => '不支持的绑定平台'], 400);
         }
 
-        $user = auth('web')->user();
-        if (!$user) {
-            return response()->json(['code' => 401, 'message' => '未登录'], 401);
-        }
-
-        $validated = $request->validate([
-            'account'  => 'required|string',
-            'password' => 'required|string',
-        ], [
-            'account.required'  => '请输入账号',
-            'password.required' => '请输入密码',
-        ]);
-
-        // 当前登录账号必须持有该平台的第三方绑定（首次社交登录自动建号时已建立）
-        $binding = UserThirdParty::where('user_id', $user->id)
-            ->where('platform', $platform)
-            ->first();
-        if (!$binding) {
-            return response()->json(['code' => 400, 'message' => '当前账号未绑定该平台，无法完成绑定'], 400);
-        }
-        $openid = (string) $binding->open_id;
-
-        $account = $validated['account'];
-        $lockKey = 'cmspro_sso_login_lock:' . md5(strtolower($account));
-
-        // 账号已被锁定
-        if (Cache::has($lockKey)) {
-            $remaining = (int) ceil(Cache::get($lockKey) / 60);
-
-            return response()->json([
-                'code'    => 429,
-                'message' => '登录失败次数过多，请 ' . $remaining . ' 分钟后再试',
-            ], 429);
-        }
-
-        // 仅取身份字段（用户名/手机号/邮箱）查询，密码单独校验
-        $identity = $this->resolveCredentials($account, '');
-        unset($identity['password']);
-
-        $target = User::where($identity)
-            ->where('status', 1)
-            ->first();
-        if (!$target || !Hash::check($validated['password'], $target->password)) {
-            // 与账号密码登录共用失败计数与锁定策略
-            $failKey = 'cmspro_sso_login_fail:' . md5(strtolower($account));
-            $failures = (int) Cache::get($failKey, 0) + 1;
-            if ($failures >= self::MAX_FAILURES) {
-                Cache::put($lockKey, self::LOCK_MINUTES * 60, self::LOCK_MINUTES * 60);
-                Cache::forget($failKey);
-
-                return response()->json([
-                    'code'    => 429,
-                    'message' => '登录失败次数过多，账号已锁定 ' . self::LOCK_MINUTES . ' 分钟',
-                ], 429);
-            }
-            Cache::put($failKey, $failures, self::LOCK_MINUTES * 60);
-
-            return response()->json(['code' => 400, 'message' => '账号或密码错误'], 400);
-        }
-
-        // 并发下绑定关系可能已被改动，复查：该 openid 仍挂在我名下才可转移
-        $current = UserThirdParty::where('platform', $platform)
-            ->where('open_id', $openid)
-            ->first();
-        if (!$current || (int) $current->user_id !== (int) $user->id) {
-            return response()->json(['code' => 400, 'message' => '该平台身份已绑定其他账号，请直接登录'], 400);
-        }
-
-        // 目标账号已是当前账号 / 已绑定同一身份，无需转移，直接切换登录态即可
-        if ((int) $current->user_id === (int) $target->id) {
-            Cache::forget($lockKey);
-            Auth::guard('web')->login($target);
-            $request->session()->regenerate();
-
-            return response()->json([
-                'code'    => 0,
-                'message' => '绑定成功',
-                'data'    => ['redirect' => $this->resolveRedirect($request)],
-            ]);
-        }
-
-        // 转移绑定关系到目标账号并切换登录态
-        DB::transaction(function () use ($current, $target) {
-            $current->update(['user_id' => $target->id]);
-        });
-        Cache::forget($lockKey);
-        Auth::guard('web')->login($target);
-        $request->session()->regenerate();
-        $target->incrementLoginCount($request->ip());
-
-        $this->writeLoginLog($target->id, $platform, $request, 1, '社交登录绑定既有账号');
-
-        return response()->json([
-            'code'    => 0,
-            'message' => '绑定成功',
-            'data'    => ['redirect' => $this->resolveRedirect($request)],
-        ]);
+        return $this->bindTokenToAccount($request, (string) $request->input('token', ''), $platform, '社交登录绑定既有账号');
     }
 
     /**
@@ -2753,6 +2718,23 @@ class AuthController extends Controller
         $url = ShareService::frontUrl('/auth/' . $platform . '/complete');
         if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
             $url .= '?redirect=' . urlencode($redirect);
+        }
+
+        return $url;
+    }
+
+    /**
+     * 社交新用户分流页地址（完善资料 / 账号绑定，凭 token 完成建号或绑定）
+     *
+     * @param string $token 授权数据暂存句柄
+     * @param string $redirect 跳转地址（仅在站内安全时拼入）
+     * @param string $platform 平台标识（wechat/qq/alipay/douyin/weibo/github/relay）
+     */
+    protected function pendingCompleteUrl(string $token, string $redirect = '', string $platform = 'wechat'): string
+    {
+        $url = ShareService::frontUrl('/auth/' . $platform . '/complete?token=' . $token);
+        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
+            $url .= '&redirect=' . urlencode($redirect);
         }
 
         return $url;

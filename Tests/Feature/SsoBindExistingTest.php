@@ -5,14 +5,18 @@ namespace App\Apps\CmsproSso\Tests\Feature;
 use App\Models\User;
 use App\Models\UserThirdParty;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * 统一登录应用 · 独立站完善资料页账号绑定测试
+ * 统一登录应用 · 独立站社交新用户分流页账号绑定测试
  *
- * 覆盖：独立站 complete 页双 Tab 渲染（完善资料/账号绑定）、绑定既有账号成功（绑定转移+切换登录）、
- * 密码错误计数、未绑定平台/未登录/非法平台拦截、目标账号即当前账号时直接切换。
+ * 覆盖：独立站 complete 页双 Tab 渲染（凭 token、未登录）、凭授权句柄绑定既有账号成功、
+ * 密码错误计数与锁定、token 无效/平台不匹配、openid 冲突、非法平台拦截、停用账号拒绝。
+ *
+ * 背景：社交新用户回调后不再自动建号，授权数据暂存 Cache 跳分流页；
+ * 绑定接口凭 token + 账号密码完成绑定登录，不再要求当前登录态持有平台绑定。
  */
 class SsoBindExistingTest extends TestCase
 {
@@ -27,13 +31,12 @@ class SsoBindExistingTest extends TestCase
 
     // ---------------------------------------------------------------- 1. complete 页双 Tab 渲染
 
-    public function test_独立站微信完善资料页渲染双Tab(): void
+    public function test_独立站微信分流页凭token渲染双Tab(): void
     {
-        // 模拟首次微信登录已自动建号并登录
-        $user = $this->createLocalUser('wx_new_1', 'random_secret');
-        $this->actingAs($user, 'web');
+        $token = $this->putOauthData();
 
-        $this->get('/sso/auth/wechat/complete')
+        // 未登录（分流页前提），凭 token 访问
+        $this->get('/sso/auth/wechat/complete?token=' . $token)
             ->assertOk()
             ->assertSee('完善资料')
             ->assertSee('账号绑定')
@@ -43,110 +46,163 @@ class SsoBindExistingTest extends TestCase
 
     // ---------------------------------------------------------------- 2. 账号绑定既有账号
 
-    public function test_微信首次登录绑定既有账号成功(): void
+    public function test_微信新用户凭token绑定既有账号成功(): void
     {
-        // 当前首次微信登录已自动建号并绑定（open_id=wx_888）
-        $current = $this->createLocalUser('wx_new_2', 'random_secret_2');
-        UserThirdParty::create([
-            'user_id'  => $current->id,
-            'platform' => 'wechat',
-            'open_id'  => 'wx_888',
-        ]);
-        $this->actingAs($current, 'web');
-
-        // 目标既有账号
+        // 既有账号（社交身份将绑定到该账号），无任何登录态
         $existing = $this->createLocalUser('bind_old_1', 'old_pwd_123');
+        $token = $this->putOauthData();
 
         $response = $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
+            'token'    => $token,
             'account'  => 'bind_old_1',
             'password' => 'old_pwd_123',
         ])->assertOk()->assertJsonPath('code', 0);
 
-        // 绑定关系已转移给既有账号，登录态切换为既有账号
+        // 绑定关系建立到既有账号，登录态切换为既有账号
         $binding = UserThirdParty::where('platform', 'wechat')->where('open_id', 'wx_888')->first();
         $this->assertNotNull($binding);
         $this->assertSame($existing->id, (int) $binding->user_id);
         $this->assertAuthenticated('web');
         $this->assertSame($existing->id, (int) auth('web')->id());
+
+        // token 已消费，未创建新账号
+        $this->assertNull(Cache::get('cmspro_sso_oauth_data:' . $token));
+        $this->assertSame(1, User::count());
+        $this->assertArrayHasKey('redirect', (array) $response->json('data'));
     }
 
     public function test_绑定密码错误返回400(): void
     {
-        $current = $this->createLocalUser('wx_new_3', 'random_secret_3');
-        UserThirdParty::create([
-            'user_id'  => $current->id,
-            'platform' => 'wechat',
-            'open_id'  => 'wx_999',
-        ]);
-        $this->actingAs($current, 'web');
-
         $this->createLocalUser('bind_old_2', 'right_pwd_123');
+        $token = $this->putOauthData();
 
         $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
+            'token'    => $token,
             'account'  => 'bind_old_2',
             'password' => 'wrong_pwd',
         ])->assertStatus(400)->assertJsonPath('message', '账号或密码错误');
 
-        // 绑定关系未被改动，仍挂当前账号
-        $this->assertSame(
-            $current->id,
-            (int) UserThirdParty::where('platform', 'wechat')->where('open_id', 'wx_999')->value('user_id')
-        );
+        // 未绑定、token 保留（用户可切换到完善资料 Tab 重新操作）
+        $this->assertSame(0, UserThirdParty::where('platform', 'wechat')->count());
+        $this->assertGuest('web');
+        $this->assertNotNull(Cache::get('cmspro_sso_oauth_data:' . $token));
     }
 
-    public function test_未绑定当前平台返回400(): void
+    public function test_绑定失败5次后锁定(): void
     {
-        $current = $this->createLocalUser('wx_new_4', 'random_secret_4');
-        // 当前账号未绑定该平台（正常首次登录必有绑定，此场景防御）
-        $this->actingAs($current, 'web');
+        $this->createLocalUser('bind_old_3', 'right_pwd_123');
+        $token = $this->putOauthData();
 
-        $this->createLocalUser('bind_old_3', 'old_pwd_123');
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
+                'token'    => $token,
+                'account'  => 'bind_old_3',
+                'password' => 'wrong_pwd',
+            ]);
+        }
 
+        // 第 6 次即使密码正确也锁定（失败锁定策略与账号密码登录一致）
         $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
+            'token'    => $token,
             'account'  => 'bind_old_3',
-            'password' => 'old_pwd_123',
-        ])->assertStatus(400)->assertJsonPath('message', '当前账号未绑定该平台，无法完成绑定');
+            'password' => 'right_pwd_123',
+        ])->assertStatus(429);
     }
 
-    public function test_未登录返回401(): void
+    public function test_token无效返回400(): void
     {
+        $this->createLocalUser('bind_old_4', 'old_pwd_123');
+
         $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
-            'account'  => 'whatever',
-            'password' => 'whatever_pwd',
-        ])->assertStatus(401);
+            'token'    => str_repeat('a', 32),
+            'account'  => 'bind_old_4',
+            'password' => 'old_pwd_123',
+        ])->assertStatus(400)->assertJsonPath('message', '登录会话已过期，请重新登录');
+
+        $this->assertGuest('web');
+    }
+
+    public function test_token平台不匹配返回400(): void
+    {
+        // wechat 授权数据提交到 qq 绑定接口：平台校验失败按会话过期处理
+        $token = $this->putOauthData();
+        $this->createLocalUser('bind_old_5', 'old_pwd_123');
+
+        $this->postJson('/api/cmspro/sso/auth/qq/bind-existing', [
+            'token'    => $token,
+            'account'  => 'bind_old_5',
+            'password' => 'old_pwd_123',
+        ])->assertStatus(400)->assertJsonPath('message', '登录会话已过期，请重新登录');
+    }
+
+    public function test_openid已被其他账号绑定时拒绝(): void
+    {
+        // openid 已被他人占用（并发场景），凭 token 绑定其他账号应被拒绝
+        $owner = $this->createLocalUser('bind_old_6', 'bind_pwd_678');
+        UserThirdParty::create([
+            'user_id'  => $owner->id,
+            'platform' => 'wechat',
+            'open_id'  => 'wx_888',
+        ]);
+        $other = $this->createLocalUser('bind_old_7', 'bind_pwd_789');
+        $token = $this->putOauthData();
+
+        $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
+            'token'    => $token,
+            'account'  => 'bind_old_7',
+            'password' => 'bind_pwd_789',
+        ])->assertStatus(400)->assertJsonPath('message', '该平台身份已绑定其他账号，请直接登录');
+
+        // 绑定关系未被改动，token 已消费（不留下可重试的冲突会话）
+        $this->assertSame($owner->id, (int) UserThirdParty::where('platform', 'wechat')->where('open_id', 'wx_888')->value('user_id'));
+        $this->assertNull(Cache::get('cmspro_sso_oauth_data:' . $token));
+        $this->assertGuest('web');
     }
 
     public function test_非法平台被拒绝(): void
     {
-        $current = $this->createLocalUser('wx_new_5', 'random_secret_5');
-        $this->actingAs($current, 'web');
-
         $this->postJson('/api/cmspro/sso/auth/phone/bind-existing', [
+            'token'    => str_repeat('a', 32),
             'account'  => 'x',
             'password' => 'y',
         ])->assertStatus(400)->assertJsonPath('message', '不支持的绑定平台');
     }
 
-    public function test_目标账号即当前账号直接切换登录(): void
+    public function test_停用账号绑定被拒绝(): void
     {
-        $current = $this->createLocalUser('wx_new_6', 'random_secret_6');
-        UserThirdParty::create([
-            'user_id'  => $current->id,
-            'platform' => 'wechat',
-            'open_id'  => 'wx_777',
-        ]);
-        $this->actingAs($current, 'web');
+        $this->createLocalUser('bind_old_8', 'bind_pwd_890', ['status' => 0]);
+        $token = $this->putOauthData();
 
         $this->postJson('/api/cmspro/sso/auth/wechat/bind-existing', [
-            'account'  => 'wx_new_6',
-            'password' => 'random_secret_6',
-        ])->assertOk()->assertJsonPath('code', 0);
+            'token'    => $token,
+            'account'  => 'bind_old_8',
+            'password' => 'bind_pwd_890',
+        ])->assertStatus(400)->assertJsonPath('message', '账号或密码错误');
 
-        $this->assertAuthenticated('web');
-        $this->assertSame($current->id, (int) auth('web')->id());
+        $this->assertGuest('web');
     }
 
     // ---------------------------------------------------------------- 辅助方法
+
+    /**
+     * 直接写入一条微信暂存授权数据（模拟回调暂存），返回 token
+     */
+    protected function putOauthData(): string
+    {
+        $token = bin2hex(random_bytes(16));
+        Cache::put('cmspro_sso_oauth_data:' . $token, [
+            'openid'        => 'wx_888',
+            'unionid'       => null,
+            'nickname'      => '微信昵称',
+            'avatar'        => 'https://a.b/wx.png',
+            'access_token'  => '',
+            'refresh_token' => '',
+            'platform'      => 'wechat',
+            'raw_data'      => ['id' => 888],
+        ], 600);
+
+        return $token;
+    }
 
     protected function createLocalUser(string $username, string $password, array $overrides = []): User
     {

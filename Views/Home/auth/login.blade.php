@@ -734,7 +734,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             $.ajax({
                 url: window.SSO_API_BASE + '/auth/' + platform + '/login-status',
                 type: 'GET',
-                data: { state: state },
+                data: { state: state, redirect: redirect },
                 success: function(res){
                     if (res.code === 0 && res.data.logged_in) {
                         clearInterval(pollTimer);
@@ -749,6 +749,12 @@ layui.use(['form', 'jquery', 'layer'], function(){
                         clearInterval(pollTimer);
                         layer.close(idx);
                         openWechatInviteModal(res.data.invite_token, platform);
+                    }
+                    // 扫码确认后发现是新用户（未开启邀请注册）：停止轮询，跳分流页创建账号或绑定已有账号
+                    if (res.code === 0 && res.data.need_setup) {
+                        clearInterval(pollTimer);
+                        layer.close(idx);
+                        window.location.href = res.data.setup_url;
                     }
                 },
                 error: function(xhr){

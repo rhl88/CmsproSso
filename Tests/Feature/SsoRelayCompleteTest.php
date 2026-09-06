@@ -252,7 +252,7 @@ class SsoRelayCompleteTest extends TestCase
             'token'    => $token,
             'account'  => 'bind_user_5',
             'password' => 'bind_pwd_567',
-        ])->assertStatus(400)->assertJsonPath('message', '该快捷登录身份已绑定其他账号，请直接登录');
+        ])->assertStatus(400)->assertJsonPath('message', '该平台身份已绑定其他账号，请直接登录');
 
         // 绑定关系未被改动，token 已消费
         $this->assertSame($owner->id, (int) UserThirdParty::where('platform', 'relay')->where('open_id', 'sso_888')->value('user_id'));

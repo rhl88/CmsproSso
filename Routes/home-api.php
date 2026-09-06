@@ -16,14 +16,12 @@ Route::post('/auth/logout', [AuthController::class, 'logout']);
 // 微信登录 API
 Route::get('/auth/wechat/login-url', [AuthController::class, 'wechatLoginUrl']);
 Route::get('/auth/wechat/login-status', [AuthController::class, 'wechatLoginStatus']);
-Route::post('/auth/wechat/complete', [AuthController::class, 'completeProfile']);
 // 邀请注册开启时，微信新用户凭 token 提交邀请码完成注册（PC 弹窗 / 微信端 complete-invite 页共用）
 Route::post('/auth/wechat/invite', [AuthController::class, 'submitInvite']);
 
 // QQ 登录 API
 Route::get('/auth/qq/login-url', [AuthController::class, 'qqLoginUrl']);
 Route::get('/auth/qq/login-status', [AuthController::class, 'qqLoginStatus']);
-Route::post('/auth/qq/complete', [AuthController::class, 'completeProfile']);
 // 邀请注册开启时，QQ 新用户凭 token 提交邀请码完成注册（PC 弹窗 / QQ 端 complete-invite 页共用）
 Route::post('/auth/qq/invite', [AuthController::class, 'submitInvite']);
 
@@ -46,9 +44,10 @@ Route::post('/auth/relay/invite', [AuthController::class, 'submitInvite']);
 // 新用户分流：完善资料（新建账号） / 账号绑定（登录已有账号）
 Route::post('/auth/relay/setup', [AuthController::class, 'setupAccount']);
 Route::post('/auth/relay/bind', [AuthController::class, 'bindAccount']);
-Route::post('/auth/relay/complete', [AuthController::class, 'completeProfile']);
 
-// 独立站完善资料页：账号绑定（将当前平台第三方绑定转移到目标既有账号并切换登录，仅微信/QQ/支付宝/抖音/微博/GitHub 开放）
+// 社交新用户分流页「完善资料」提交：凭授权句柄（token）创建账号并登录（{platform} 由路由注入，relay 走上方 setup）
+Route::post('/auth/{platform}/complete', [AuthController::class, 'completeProfile']);
+// 社交新用户分流页「账号绑定」提交：凭 token + 账号密码绑定既有账号并登录（仅微信/QQ/支付宝/抖音/微博/GitHub 开放）
 Route::post('/auth/{platform}/bind-existing', [AuthController::class, 'bindToExistingAccount']);
 
 // 手机验证码登录 API

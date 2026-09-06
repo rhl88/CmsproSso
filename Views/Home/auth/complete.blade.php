@@ -3,13 +3,13 @@
 @php
     $platform = $platform ?? 'wechat';
     $label = $platform === 'qq' ? 'QQ' : ($platform === 'relay' ? '统一登录' : '微信');
-    // 快捷登录新用户分流：relay 平台带 token（授权数据暂存句柄），支持「完善资料 / 账号绑定」双 Tab
-    $relayToken = (string) ($token ?? '');
-    $isRelay = $platform === 'relay' && $relayToken !== '';
-    // 回填昵称：relay 新用户无本地账号，优先取服务端授权昵称；独立站已自动建号，取本地账号昵称
-    $nickname = $isRelay ? (string) ($oauthNickname ?? '') : (string) ($user->nickname ?? '');
-    $phone = (string) ($user->phone ?? '');
-    // 双 Tab 提交接口：relay 凭 token → setup/bind；独立站已登录 → complete / bind-existing
+    $token = (string) ($token ?? '');
+    // token 分流模式：新用户未登录，凭 token 完成「完善资料（创建账号）」或「账号绑定」（relay 与独立站社交平台统一）
+    $isTokenFlow = $token !== '';
+    $isRelay = $platform === 'relay';
+    // 昵称回填：无本地账号，取服务端授权昵称
+    $nickname = $isTokenFlow ? (string) ($oauthNickname ?? '') : '';
+    // 双 Tab 提交接口：relay 凭 token → setup/bind；独立站社交平台凭 token → complete/bind-existing
     $setupUrl = $isRelay ? '/auth/relay/setup' : '/auth/' . $platform . '/complete';
     $bindUrl = $isRelay ? '/auth/relay/bind' : '/auth/' . $platform . '/bind-existing';
 @endphp
@@ -20,19 +20,9 @@
 <div class="sso-card">
     <div class="sso-card-title">{{ $isRelay ? '快捷登录' : '完善资料' }}</div>
 
-    @if ($isRelay)
     <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
-        首次快捷登录，请完善以下信息创建新账号
+        首次{{ $label }}登录，请完善以下信息创建新账号，或绑定已有账号
     </p>
-    @elseif ($label === '微信')
-    <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
-        首次微信登录，请完善以下信息
-    </p>
-    @else
-    <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
-        首次{{ $label }}登录，请完善以下信息
-    </p>
-    @endif
 
     {{-- 双 Tab：完善资料（默认） / 账号绑定 --}}
     <div class="sso-tabs">
@@ -40,7 +30,7 @@
         <div class="sso-tab" data-tab="bind">账号绑定</div>
     </div>
 
-    {{-- Tab1：完善资料（新建账号 / 更新资料） --}}
+    {{-- Tab1：完善资料（新建账号） --}}
     <div class="sso-tab-pane" data-pane="setup">
         <div class="layui-form-item">
             <input type="text" id="setup-nickname" placeholder="昵称" maxlength="50"
@@ -48,27 +38,21 @@
         </div>
         <div class="layui-form-item">
             <input type="text" id="setup-phone" placeholder="手机号（可选）" maxlength="20"
-                   value="{{ $phone }}" class="layui-input">
+                   value="{{ $phone ?? '' }}" class="layui-input">
         </div>
         <div class="layui-form-item">
             <button type="button" class="layui-btn layui-btn-fluid" id="setup-submit"
                     style="background: #2563eb; height: 44px; font-size: 15px;">
-                {{ $isRelay ? '创建账号并进入' : '保存并进入' }}
+                创建账号并进入
             </button>
         </div>
     </div>
 
     {{-- Tab2：账号绑定（登录已有账号） --}}
     <div class="sso-tab-pane" data-pane="bind" style="display: none;">
-        @if (!$isRelay)
-        <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
-            已有本站账号？输入账号密码绑定后登录（当前{{ $label }}身份将转为绑定该账号）
-        </p>
-        @else
         <p style="text-align: center; color: #666; font-size: 13px; margin-bottom: 20px;">
             已有本站账号？输入账号密码绑定后登录
         </p>
-        @endif
         <div class="layui-form-item">
             <input type="text" id="bind-account" placeholder="用户名 / 手机号 / 邮箱" maxlength="50"
                    autocomplete="username" class="layui-input">
@@ -99,23 +83,23 @@ layui.use(['jquery', 'layer'], function(){
         headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
     });
 
-    // 平台标识（wechat/qq/relay），决定调用的接口
+    // 平台标识（wechat/qq/alipay/douyin/weibo/github/relay），决定调用的接口
     var platform = @json($platform);
-    // 是否 relay 快捷模式（凭 token 建号/绑定），独立站已登录更新资料/转移绑定
-    var isRelay = @json($isRelay ? true : false);
-    // 提交接口（后端 render 时按身份差异计算，确保权限正确）
+    // token 分流模式（新用户未登录，凭 token 建号/绑定）
+    var isTokenFlow = @json($isTokenFlow ? true : false);
+    // 提交接口（后端 render 时按平台差异计算，确保权限正确）
     var setupUrl = @json($setupUrl);
     var bindUrl = @json($bindUrl);
-    // relay 模式携带的授权句柄（独立站为空）
-    var relayToken = @json($relayToken);
+    // 授权数据暂存句柄（分流页必带）
+    var oauthToken = @json($token);
     // 登录页携带的跳转地址（成功后继续透传）
     var redirect = @json($redirect ?? '');
 
     function payload(fields) {
         var data = $.extend({}, fields, { redirect: redirect });
-        // relay 模式所有提交均需携带 token
-        if (isRelay) {
-            data.token = relayToken;
+        // 分流模式所有提交均需携带 token
+        if (isTokenFlow) {
+            data.token = oauthToken;
         }
         return data;
     }
@@ -138,7 +122,7 @@ layui.use(['jquery', 'layer'], function(){
         hideMsg();
     });
 
-    // Tab1：完善资料（relay 新建账号 / 独立站更新资料）
+    // Tab1：完善资料（凭 token 新建账号）
     $('#setup-submit').on('click', function(){
         hideMsg();
         var loadIdx = layer.load(2);

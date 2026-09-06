@@ -4,12 +4,13 @@
     $result = request()->query('result');
     $pcFailed = $result === 'failed';
     $pcInvite = $result === 'invite';
+    $pcSetup = $result === 'setup';
     // 平台标识（wechat/qq/relay），用于提示文案；由访问路径区分
     $platform = str_contains(request()->path(), 'relay') ? 'relay' : (str_contains(request()->path(), 'qq') ? 'qq' : 'wechat');
     $label = $platform === 'qq' ? 'QQ' : ($platform === 'relay' ? '统一登录' : '微信');
 @endphp
 
-@section('title', $pcFailed ? '登录失败' : ($pcInvite ? '需要邀请码' : '扫码登录成功'))
+@section('title', $pcFailed ? '登录失败' : ($pcInvite ? '需要邀请码' : ($pcSetup ? '请完善资料' : '扫码登录成功')))
 
 @section('content')
 <div class="sso-card" style="text-align: center;">
@@ -28,6 +29,14 @@
     <div class="sso-card-title" style="margin-bottom: 8px;">需要邀请码</div>
     <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
         本站开启邀请注册，请在电脑端的邀请码弹窗中输入邀请码完成登录。
+    </p>
+    @elseif($pcSetup)
+    <div style="font-size: 56px; color: #1e9fff; margin-bottom: 16px;">
+        <i class="layui-icon layui-icon-username"></i>
+    </div>
+    <div class="sso-card-title" style="margin-bottom: 8px;">请在电脑上完成登录</div>
+    <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
+        首次登录需要创建账号或绑定已有账号，请在电脑端继续操作完成登录。
     </p>
     @else
     <div style="font-size: 56px; color: #07c160; margin-bottom: 16px;">
@@ -48,7 +57,7 @@
 @section('script')
 <script>
 layui.use([], function(){
-    @if(!$pcFailed && !$pcInvite)
+    @if(!$pcFailed && !$pcInvite && !$pcSetup)
     // 关闭当前窗口：微信内优先使用 WeixinJSBridge，普通环境回退 window.close()
     function closeWindow() {
         if (typeof WeixinJSBridge !== 'undefined' && WeixinJSBridge.call) {

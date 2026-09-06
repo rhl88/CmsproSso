@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
+    // Cache 键前缀：社交新用户授权数据暂存（与 HomeApi\AuthController::CACHE_OAUTH_DATA_PREFIX 同值）
+    protected const OAUTH_DATA_PREFIX = 'cmspro_sso_oauth_data:';
+
     public function __construct(
         protected SettingService $settingService
     ) {
@@ -203,33 +206,34 @@ class AuthController extends Controller
     }
 
     /**
-     * 首次社交登录完善资料页（微信/QQ/relay 通用）
+     * 社交新用户分流页（完善资料 / 账号绑定，relay 与独立站社交平台通用）
      *
-     * relay 平台带 token（快捷登录新用户分流：完善资料 / 账号绑定双 Tab），
-     * token 为授权数据暂存句柄，透传给视图供提交接口使用。
+     * OAuth 回调发现新用户后携带 token 跳转至此（未登录），凭 token 完成
+     * 「完善资料（创建账号）」或「账号绑定（登录已有账号）」；已登录用户无需分流。
      */
     public function completeForm(Request $request)
     {
-        $user = auth('web')->user();
         $platform = $this->platformFromPath($request->path());
         $token = (string) $request->input('token', '');
 
-        // relay 分流页无需登录态（凭 token 完成建号/绑定），其他平台需已登录
-        if ($platform !== 'relay' && !$user) {
+        // 已登录用户无需分流，直接跳转默认页
+        if (auth('web')->check()) {
+            return redirect($this->resolveRedirect($request));
+        }
+
+        // 分流页凭 token 完成建号/绑定，无 token 回登录页
+        if ($token === '') {
             return redirect(ShareService::frontUrl('/login'));
         }
 
-        // relay 新用户：凭 token 取回暂存授权数据，回填服务端昵称（无本地账号可取）
+        // 凭 token 取回暂存授权数据，回填服务端授权昵称（校验平台一致，防串页）
         $oauthNickname = '';
-        if ($platform === 'relay' && $token !== '') {
-            $oauthData = Cache::get('cmspro_sso_oauth_data:' . $token);
-            if (is_array($oauthData) && (string) ($oauthData['platform'] ?? '') === 'relay') {
-                $oauthNickname = (string) ($oauthData['nickname'] ?? '');
-            }
+        $oauthData = Cache::get(self::OAUTH_DATA_PREFIX . $token);
+        if (is_array($oauthData) && (string) ($oauthData['platform'] ?? '') === $platform) {
+            $oauthNickname = (string) ($oauthData['nickname'] ?? '');
         }
 
         return view('cmspro.sso::Home.auth.complete', [
-            'user'     => $user,
             'platform' => $platform,
             'redirect' => (string) $request->input('redirect', ''),
             'token'    => $token,

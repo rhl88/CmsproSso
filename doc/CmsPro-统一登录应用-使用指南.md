@@ -101,11 +101,9 @@
 | POST | `/api/cmspro/sso/auth/register`            | 注册并自动登录                                                                                                                        |
 | POST | `/api/cmspro/sso/auth/logout`              | 退出登录                                                                                                                           |
 | GET  | `/api/cmspro/sso/auth/wechat/login-url`    | 获取微信授权 URL（device=pc 为扫码模式）                                                                                                    |
-| GET  | `/api/cmspro/sso/auth/wechat/login-status` | PC 扫码登录轮询                                                                                                                      |
-| POST | `/api/cmspro/sso/auth/wechat/complete`     | 首次微信登录完善资料                                                                                                                     |
+| GET  | `/api/cmspro/sso/auth/wechat/login-status` | PC 扫码登录轮询（新用户开启邀请注册返回 `need_invite` 弹邀请码弹窗；未开启返回 `need_setup`，PC 端跳分流页）                                                         |
 | GET  | `/api/cmspro/sso/auth/qq/login-url`        | 获取 QQ 授权 URL（device=pc 为扫码模式；不带 device 为网页授权模式）                                                                                |
-| GET  | `/api/cmspro/sso/auth/qq/login-status`     | PC 扫码登录轮询                                                                                                                      |
-| POST | `/api/cmspro/sso/auth/qq/complete`         | 首次 QQ 登录完善资料                                                                                                                   |
+| GET  | `/api/cmspro/sso/auth/qq/login-status`     | PC 扫码登录轮询（同微信：新用户返回 `need_invite`/`need_setup`）                                                                                |
 | POST | `/api/cmspro/sso/auth/qq/invite`           | QQ 新用户凭邀请码建号                                                                                                                   |
 | POST | `/api/cmspro/sso/auth/phone/code`          | 发送手机验证码短信（限频 60 秒/次）                                                                                                           |
 | POST | `/api/cmspro/sso/auth/phone/login`         | 手机验证码登录（未注册自动创建用户）                                                                                                             |
@@ -126,6 +124,8 @@
 | POST | `/api/cmspro/sso/auth/relay/complete`      | 快捷模式首次登录完善资料（新建账号）                                                                                                             |
 | POST | `/api/cmspro/sso/auth/relay/setup`         | 快捷模式新用户分流：完善资料建号（参数：token/nickname/phone，token 一次性消费）                                                                          |
 | POST | `/api/cmspro/sso/auth/relay/bind`          | 快捷模式新用户分流：绑定已有本地账号（参数：token/account/password，密码错误计数锁定，openid 冲突拒绝）                                                             |
+| POST | `/api/cmspro/sso/auth/{platform}/complete` | 社交新用户分流页完善资料建号（platform=wechat/qq/alipay/douyin/weibo/github；参数 token/nickname/phone，token 一次性消费，建号后登录）                        |
+| POST | `/api/cmspro/sso/auth/{platform}/bind-existing` | 社交新用户分流页绑定已有账号（platform 同上；参数 token/account/password，密码错误计数锁定，openid 冲突拒绝，绑定成功切换登录态）                                       |
 
 ### 3.5 快捷模式开放 API（服务端）
 
@@ -370,4 +370,5 @@ app/Apps/CmsproSso/
 | 2.0.16 | 2026-09-04 | 快捷模式中转客户端登录页快捷登录入口改为按后台启用状态显示：此前客户端模式仅显示微信/QQ，支付宝/抖音/微博/GitHub 即使后台已启用也隐藏；现客户端模式同样展示全部已启用平台入口，点击经 `/auth/{platform}/login-url` 由服务端检测中转客户端并委托服务端代跳，与独立站模式一致                                                                                                                                                                                                                                                                                                      | <br /> |
 | 2.0.17 | 2026-09-04 | 调整前台账号管理页「账号绑定」注入方式：此前为直接修改框架账号页视图，现转由本应用按 CmsproNotepad 覆盖 dashboard 模式，在 ServiceProvider 覆盖系统同名路由 user.account（/user/account）渲染应用视图——保留系统个人信息管理并注入账号绑定入口与共用绑定中心组件，全程不修改任何框架文件（全量 88 用例通过） | <br /> |
 | 2.0.18 | 2026-09-06 | 修复前台登录后首页报「Uncaught ReferenceError: layui is not defined」：绑定中心组件此前在 content 区引入，随 `@yield('content')` 渲染于布局 layui.js 加载之前，其脚本顶层 `layui.use(...)` 执行时 layui 尚未定义；现将引入位置移至 `@section('script')`（layui.js 之后），与组件使用约定及框架账号管理页引入方式一致（浏览器实测首页控制台无报错、绑定中心弹层正常打开） | <br /> |
+| 2.0.19 | 2026-09-06 | 社交新用户分流治理——独立站平台（微信/QQ/支付宝/抖音/微博/GitHub）OAuth 回调发现新用户不再自动建号：授权数据暂存 Cache（token 一次性句柄）后跳分流页（完善资料/账号绑定双 Tab，未登录凭 token 操作）；PC 扫码登录轮询新增 `need_setup` 状态（新用户 PC 端跳分流页，与 need_invite 并列）；分流页提交路由参数化（`/auth/{platform}/complete` 与 `/auth/{platform}/bind-existing`，替代原 wechat/qq 静态路由，四平台补齐）；bind-existing 语义修正——由「已登录用户转移绑定」改为「凭 token + 账号密码绑定既有账号并切换登录态」（与 relay 模式 bind 一致，失败锁定策略同步）；抽取 `createAccountFromToken`/`bindTokenToAccount`/`verifyBindCredentials`/`bindOauthToUser` 公共方法与 relay setup/bind 复用；改写 `SsoBindExistingTest` 并新增 `SsoSocialNewUserFlowTest`（应用全量 101 用例通过） | <br /> |
 

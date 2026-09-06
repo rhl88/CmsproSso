@@ -193,7 +193,8 @@ class SsoPcBindTest extends TestCase
         ]));
 
         $response->assertRedirect();
-        $this->assertStringContainsString('/home', (string) $response->headers->get('Location'));
+        // 手机端跳转无需登录的绑定结果提示页（不能跳受保护 /home，否则手机端无登录态会被重定向到登录页）
+        $this->assertStringContainsString('/auth/qq/pc-success?result=bind_success', (string) $response->headers->get('Location'));
 
         // 绑定落库到 Cache 中发起的用户，甚至回调未登录也可完成
         $binding = UserThirdParty::where('platform', 'qq')
@@ -229,6 +230,8 @@ class SsoPcBindTest extends TestCase
         ]));
 
         $response->assertRedirect();
+        // 手机端跳转绑定失败提示页（无需登录）
+        $this->assertStringContainsString('/auth/qq/pc-success?result=bind_failed', (string) $response->headers->get('Location'));
         // 未新增绑定记录
         $this->assertSame(1, UserThirdParty::where('open_id', 'QQOPENID_PC_TAKEN_001')->count());
         // 结果写 Cache 供 PC 端轮询
@@ -245,11 +248,14 @@ class SsoPcBindTest extends TestCase
         $this->setConfig('qq_app_key', 'test_qq_app_key');
         $this->fakeQqApis('QQOPENID_PC_NOUSER_001');
 
-        $this->get('/sso/auth/qq/callback?' . http_build_query([
+        $response = $this->get('/sso/auth/qq/callback?' . http_build_query([
             'code'  => 'QQ_CODE_PC_NOUSER',
             'state' => $state,
         ]));
 
+        $response->assertRedirect();
+        // 手机端跳转绑定失败提示页（无需登录）
+        $this->assertStringContainsString('/auth/qq/pc-success?result=bind_failed', (string) $response->headers->get('Location'));
         $result = Cache::get('cmspro_sso_bind_result:' . $state);
         $this->assertSame('绑定目标不存在或已注销，无法完成绑定', $result['error']);
     }
@@ -299,6 +305,17 @@ class SsoPcBindTest extends TestCase
             ->getJson('/api/cmspro/sso/auth/qq/bind-status?state=' . $state)
             ->assertStatus(422)
             ->assertJsonPath('message', '该QQ用户已绑定其他账号，无法重复绑定');
+    }
+
+    public function test_绑定结果提示页未登录可访问且展示绑定结果文案(): void
+    {
+        // 手机端扫码授权后跳转的绑定结果提示页无需登录即可访问（公开路由）
+        $this->get('/sso/auth/qq/pc-success?result=bind_success')
+            ->assertOk()
+            ->assertSee('绑定成功');
+        $this->get('/sso/auth/qq/pc-success?result=bind_failed')
+            ->assertOk()
+            ->assertSee('绑定失败');
     }
 
     // ---------------------------------------------------------------- 绑定列表详情字段

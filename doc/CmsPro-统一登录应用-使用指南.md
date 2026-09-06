@@ -1,7 +1,7 @@
 # 统一登录 · 使用指南
 
-> 版本：1.5.0 | 更新日期：2026-09-02
-> 应用版本：1.8.0 | 应用 ID：`cmspro.sso`
+> 版本：1.6.0 | 更新日期：2026-09-06
+> 应用版本：2.0.22 | 应用 ID：`cmspro.sso`
 
 > 本指南帮助开发者快速安装、运行和验证统一登录应用。
 
@@ -170,7 +170,7 @@
 
 交互说明：
 
-- 绑定微信/QQ：展示形态由后端 `bind-url` 返回的 `display` 字段统一决策——微信 PC 端固定弹出二维码扫码绑定；QQ PC 端依后台「QQ登录设置」的 `qq_mode` 分流（qrcode=弹二维码扫码，web/默认=跳转 QQ 授权页）；移动端（手机浏览器/微信内）一律跳转对应平台授权页。扫码绑定扫一扫授权完成后自动关闭弹窗并刷新绑定列表；跳转授权完成后自动回跳首页并提示绑定结果；与登录共用回调地址，一个平台仅能绑定一个账号，openid 已被其他账号占用时拒绝绑定
+- 绑定微信/QQ：展示形态由后端 `bind-url` 返回的 `display` 字段统一决策——微信 PC 端固定弹出二维码扫码绑定；QQ PC 端依后台「QQ登录设置」的 `qq_mode` 分流（qrcode=弹二维码扫码，web/默认=跳转 QQ 授权页）；移动端（手机浏览器/微信内）一律跳转对应平台授权页。扫码绑定扫一扫授权完成后 PC 端自动关闭弹窗并刷新绑定列表；手机端扫码授权后跳公开提示页 `pc-success?result=bind_success/bind_failed` 展示绑定结果（成功自动关闭，失败停留提示页），不再回跳需登录的首页；跳转授权完成后自动回跳首页并提示绑定结果；与登录共用回调地址，一个平台仅能绑定一个账号，openid 已被其他账号占用时拒绝绑定
 
 - 绑定手机号：弹窗输入手机号 + 短信验证码（复用登录短信配置，60 秒限频、验证码一次性失效）；目标手机号已被其他账号使用时拒绝
 
@@ -373,4 +373,5 @@ app/Apps/CmsproSso/
 | 2.0.19 | 2026-09-06 | 社交新用户分流治理——独立站平台（微信/QQ/支付宝/抖音/微博/GitHub）OAuth 回调发现新用户不再自动建号：授权数据暂存 Cache（token 一次性句柄）后跳分流页（完善资料/账号绑定双 Tab，未登录凭 token 操作）；PC 扫码登录轮询新增 `need_setup` 状态（新用户 PC 端跳分流页，与 need_invite 并列）；分流页提交路由参数化（`/auth/{platform}/complete` 与 `/auth/{platform}/bind-existing`，替代原 wechat/qq 静态路由，四平台补齐）；bind-existing 语义修正——由「已登录用户转移绑定」改为「凭 token + 账号密码绑定既有账号并切换登录态」（与 relay 模式 bind 一致，失败锁定策略同步）；抽取 `createAccountFromToken`/`bindTokenToAccount`/`verifyBindCredentials`/`bindOauthToUser` 公共方法与 relay setup/bind 复用；改写 `SsoBindExistingTest` 并新增 `SsoSocialNewUserFlowTest`（应用全量 101 用例通过） | <br /> |
 | 2.0.20 | 2026-09-06 | 修复子域名（domain）模式下社交新用户分流页误报「登录会话已过期，请重新登录」：分流页平台标识由请求路径解析（`platformFromPath`），此前正则要求路径含前导斜杠（`/auth/{platform}/`），而 domain 模式下 Laravel `path()` 返回的路径不带前导斜杠，导致解析失败、QQ/支付宝/抖音/微博/GitHub 平台被兜底为 wechat，分流页进页校验平台不匹配直接跳回登录页；现解析前规范化补齐前导斜杠；同时 PC 扫码模式回调暂存授权数据前统一覆写 platform（与普通模式一致，防御外挂模式硬编码 wechat）；新增暂存、进页拦截、建号与绑定校验失败诊断日志；新增子域名模式分流页测试用例（应用全量 103 用例通过） | <br /> |
 | 2.0.21 | 2026-09-06 | 修复支付宝扫码登录回调报「支付宝用户授权失败，未获取到 openid」：支付宝网页授权（`openauth.alipay.com`）跳出时回传参数名为 `auth_code`（区别于微信/QQ/抖音/微博/GitHub 的 `code`），而 `oauthCallback` 仅读取 `code`，导致回调落入外挂分支、因无 openid 触发 400 被框架兜底渲染为 500；现支付宝平台兼容读取 `auth_code`（`code` 为空且平台为 alipay 时回退 `auth_code`），其余平台不受影响；新增 `SsoAlipayCallbackTest`（登录 URL state、auth_code 换取凭证登录老用户、换取失败、无凭证四例，应用全量 106 用例通过） | <br /> |
+| 2.0.22 | 2026-09-06 | 修复 PC 扫码绑定手机端停留登录页：`bindPcOauthCallback` 原跳转受保护 `/home`，手机端无登录态被 `cmspro.sso.auth` 中间件重定向 `/login?redirect=...`；改为跳转公开提示页 `pc-success?result=bind_success`（成功）/`result=bind_failed`（绑定目标不存在/冲突），手机端无需登录态即可展示结果并自动关闭，PC 端仍经 `bind-status` 轮询取结果；`pc-success` 新增绑定成功/失败语义分支（绑定失败不自动关闭，与登录失败一致）；`SsoPcBindTest` 适配跳转断言并新增提示页文案用例（18 用例通过） | <br /> |
 

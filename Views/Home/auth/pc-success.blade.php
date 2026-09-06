@@ -5,12 +5,14 @@
     $pcFailed = $result === 'failed';
     $pcInvite = $result === 'invite';
     $pcSetup = $result === 'setup';
+    $pcBindSuccess = $result === 'bind_success';
+    $pcBindFailed = $result === 'bind_failed';
     // 平台标识（wechat/qq/relay），用于提示文案；由访问路径区分
     $platform = str_contains(request()->path(), 'relay') ? 'relay' : (str_contains(request()->path(), 'qq') ? 'qq' : 'wechat');
     $label = $platform === 'qq' ? 'QQ' : ($platform === 'relay' ? '统一登录' : '微信');
 @endphp
 
-@section('title', $pcFailed ? '登录失败' : ($pcInvite ? '需要邀请码' : ($pcSetup ? '请完善资料' : '扫码登录成功')))
+@section('title', $pcFailed ? '登录失败' : ($pcBindFailed ? '绑定失败' : ($pcInvite ? '需要邀请码' : ($pcSetup ? '请完善资料' : ($pcBindSuccess ? '绑定成功' : '扫码登录成功')))))
 
 @section('content')
 <div class="sso-card" style="text-align: center;">
@@ -38,6 +40,22 @@
     <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
         首次登录需要创建账号或绑定已有账号，请在电脑端继续操作完成登录。
     </p>
+    @elseif($pcBindFailed)
+    <div style="font-size: 56px; color: #ff5722; margin-bottom: 16px;">
+        <i class="layui-icon layui-icon-close-fill"></i>
+    </div>
+    <div class="sso-card-title" style="margin-bottom: 8px;">绑定失败</div>
+    <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
+        绑定确认失败，请关闭本页面后在电脑上查看绑定结果。
+    </p>
+    @elseif($pcBindSuccess)
+    <div style="font-size: 56px; color: #07c160; margin-bottom: 16px;">
+        <i class="layui-icon layui-icon-ok-circle"></i>
+    </div>
+    <div class="sso-card-title" style="margin-bottom: 8px;">绑定成功</div>
+    <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
+        手机端已确认绑定，本页面将自动关闭，请在电脑上查看绑定结果...
+    </p>
     @else
     <div style="font-size: 56px; color: #07c160; margin-bottom: 16px;">
         <i class="layui-icon layui-icon-ok-circle"></i>
@@ -57,7 +75,7 @@
 @section('script')
 <script>
 layui.use([], function(){
-    @if(!$pcFailed && !$pcInvite && !$pcSetup)
+    @if(!$pcFailed && !$pcInvite && !$pcSetup && !$pcBindFailed)
     // 关闭当前窗口：微信内优先使用 WeixinJSBridge，普通环境回退 window.close()
     function closeWindow() {
         if (typeof WeixinJSBridge !== 'undefined' && WeixinJSBridge.call) {

@@ -1511,8 +1511,11 @@ class AuthController extends Controller
      * 绑定目标用户不依赖回调请求自身的登录态，而是从发起时暂存 Cache 的绑定目标取回。
      *
      * 处理结果统一写入绑定结果 Cache，PC 端通过 bind-status 接口轮询获知：
-     *   - 冲突/失败 → 写 error，redirect 提示页；
-     *   - 成功 → 写 bound，redirect 提示页。
+     *   - 冲突/失败 → 写 error，手机端跳绑定失败提示页；
+     *   - 成功 → 写 bound，手机端跳绑定成功提示页。
+     *
+     * 手机端跳转目标必须是无需登录的提示页：手机端扫码时无登录态，
+     * 跳受保护的 /home 会被认证中间件重定向到登录页（与扫码登录流程一致）。
      *
      * @param array $data 授权数据（openid/nickname/avatar/access_token 等）
      * @param string $platform 平台标识（wechat/qq）
@@ -1520,7 +1523,8 @@ class AuthController extends Controller
      */
     protected function bindPcOauthCallback(Request $request, array $data, string $platform, string $state)
     {
-        $homeUrl = ShareService::frontUrl('/home');
+        // 手机端扫码授权后跳转无需登录的绑定结果提示页（PC 端轮询 bind-status 获取结果）
+        $resultPageUrl = ShareService::frontUrl('/auth/' . $platform . '/pc-success');
         // 从发起时暂存的绑定目标（PC 端当前登录用户）取回；键为一次性，消费后即失效
         $bindData = Cache::pull(self::CACHE_BIND_STATE_PREFIX . $state);
         $ownerUserId = (int) ($bindData['user_id'] ?? 0);
@@ -1532,7 +1536,7 @@ class AuthController extends Controller
         if ($ownerUserId <= 0 || !User::find($ownerUserId)) {
             $message = '绑定目标不存在或已注销，无法完成绑定';
             Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['error' => $message], self::LOGIN_STATE_TTL);
-            return redirect($homeUrl)->with('error', $message);
+            return redirect($resultPageUrl . '?result=bind_failed')->with('error', $message);
         }
 
         // openid 冲突检测：已被其他账号绑定时拒绝（一个 openid 仅能绑定一个账号）
@@ -1544,7 +1548,7 @@ class AuthController extends Controller
                 ? '已绑定' . $label . '，无需重复绑定'
                 : '该' . $label . '已绑定其他账号，无法重复绑定';
             Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['error' => $message], self::LOGIN_STATE_TTL);
-            return redirect($homeUrl)->with('error', $message);
+            return redirect($resultPageUrl . '?result=bind_failed')->with('error', $message);
         }
 
         // 落库绑定关系到绑定目标用户（不依赖回调请求自身的登录态，不改变任何登录态）
@@ -1563,7 +1567,7 @@ class AuthController extends Controller
         // 通知 PC 端：绑定成功
         Cache::put(self::CACHE_BIND_RESULT_PREFIX . $state, ['bound' => true], self::LOGIN_STATE_TTL);
 
-        return redirect($homeUrl)->with('success', $label . '绑定成功');
+        return redirect($resultPageUrl . '?result=bind_success')->with('success', $label . '绑定成功');
     }
 
     /**

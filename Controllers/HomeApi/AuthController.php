@@ -1172,6 +1172,10 @@ class AuthController extends Controller
         $redirectKey = $this->sessionRedirectKey($platform);
 
         $code = (string) $request->query('code', '');
+        // 支付宝网页授权回调使用 auth_code 参数名（平台独有），其他平台均为 code，需兼容
+        if ($code === '' && $platform === 'alipay') {
+            $code = (string) $request->query('auth_code', '');
+        }
         $state = (string) $request->query('state', '');
 
         // 绑定模式（已登录用户在首页发起绑定）：state 存 session 单独键，

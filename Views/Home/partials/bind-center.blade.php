@@ -35,7 +35,11 @@ layui.use(['jquery', 'layer'], function(){
         phone:  { label: '手机号', icon: 'layui-icon-cellphone',        color: '#2563eb', field: 'phone' },
         email:  { label: '邮箱',   icon: 'layui-icon-email',            color: '#fa6400', field: 'email' },
         wechat: { label: '微信',   icon: 'layui-icon-login-wechat',     color: '#07c160', field: 'nickname' },
-        qq:     { label: 'QQ',     icon: 'layui-icon-login-qq',         color: '#12b7f5', field: 'nickname' }
+        qq:     { label: 'QQ',     icon: 'layui-icon-login-qq',         color: '#12b7f5', field: 'nickname' },
+        alipay: { label: '支付宝', icon: 'layui-icon-login-qq',         color: '#1677ff', field: 'nickname' },
+        douyin: { label: '抖音',   icon: 'layui-icon-login-qq',         color: '#111111', field: 'nickname' },
+        weibo:  { label: '微博',   icon: 'layui-icon-login-qq',         color: '#e6162d', field: 'nickname' },
+        github: { label: 'GitHub', icon: 'layui-icon-username',         color: '#181717', field: 'nickname' }
     };
 
     // 入口：任意带 .sso-bind-center-open 的元素点击打开绑定中心（事件委托，兼容动态渲染）
@@ -195,7 +199,7 @@ layui.use(['jquery', 'layer'], function(){
     // 微信/QQ 扫码绑定：弹出二维码层并轮询绑定状态
     function openBindQrModal(url, state, platform){
         platform = platform || 'wechat';
-        var label = platform === 'qq' ? 'QQ' : '微信';
+        var label = (BIND_PLATFORMS[platform] || {}).label || platform;
         var qrImg = window.SSO_API_BASE + '/qrcode?url=' + encodeURIComponent(url) + '&size=240';
 
         var idx = layer.open({

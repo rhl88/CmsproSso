@@ -7,6 +7,7 @@ use App\Apps\CmsproSso\Services\ShareService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -226,12 +227,21 @@ class AuthController extends Controller
             return redirect(ShareService::frontUrl('/login'));
         }
 
-        // 凭 token 取回暂存授权数据，回填服务端授权昵称（校验平台一致，防串页）
-        $oauthNickname = '';
+        // 进页即校验暂存授权数据：token 无效/过期/平台不匹配时页面无法完成任何操作，
+        // 直接回登录页提示重新登录，避免用户填完表单提交后才报错
         $oauthData = Cache::get(self::OAUTH_DATA_PREFIX . $token);
-        if (is_array($oauthData) && (string) ($oauthData['platform'] ?? '') === $platform) {
-            $oauthNickname = (string) ($oauthData['nickname'] ?? '');
+        if (!is_array($oauthData) || (string) ($oauthData['platform'] ?? '') !== $platform) {
+            // 诊断日志：定位进页误拦（token 过期/伪造/平台解析不一致）
+            Log::warning('SSO分流: 分流页进页校验失败', [
+                'token'  => $token,
+                'expect' => $platform,
+                'exists' => is_array($oauthData),
+                'actual' => is_array($oauthData) ? (string) ($oauthData['platform'] ?? '') : null,
+            ]);
+
+            return redirect(ShareService::frontUrl('/login'))->with('error', '登录会话已过期，请重新登录');
         }
+        $oauthNickname = (string) ($oauthData['nickname'] ?? '');
 
         return view('cmspro.sso::Home.auth.complete', [
             'platform' => $platform,
@@ -262,6 +272,10 @@ class AuthController extends Controller
      */
     protected function platformFromPath(string $path): string
     {
+        // 规范化前导斜杠：domain 模式下 Laravel path() 返回的路径不带前导斜杠（如 auth/qq/complete），
+        // 不补齐会让下方正则匹配失败、平台误判，导致分流页进页校验误报「登录会话已过期」
+        $path = '/' . ltrim($path, '/');
+
         foreach (['alipay', 'douyin', 'weibo', 'github', 'wechat', 'qq'] as $platform) {
             if (preg_match('#/auth/' . $platform . '/#', $path)) {
                 return $platform;

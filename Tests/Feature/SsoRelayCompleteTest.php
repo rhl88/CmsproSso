@@ -119,17 +119,18 @@ class SsoRelayCompleteTest extends TestCase
         $this->assertStringContainsString('value="服务端昵称"', $content);
     }
 
-    public function test_分流页token无效时不回填昵称(): void
+    public function test_分流页token无效跳转登录页(): void
     {
         $this->configRelayClient();
 
-        $response = $this->get('/sso/auth/relay/complete?token=' . str_repeat('b', 32));
-        $response->assertOk();
+        // token 在暂存中不存在（过期/已消费/伪造）：进页即拦截回登录页，避免用户白填表单
+        $this->get('/sso/auth/relay/complete?token=' . str_repeat('b', 32))
+            ->assertRedirect(\App\Apps\CmsproSso\Services\ShareService::frontUrl('/login'));
 
-        // 授权数据不存在，昵称输入框为空值
-        $content = (string) $response->getContent();
-        $this->assertStringContainsString('id="setup-nickname"', $content);
-        $this->assertStringNotContainsString('value="服务端昵称"', $content);
+        // 登录页展示「会话过期」提示（login 页读取 session('error')）
+        $this->followRedirects($this->get('/sso/auth/relay/complete?token=' . str_repeat('b', 32)))
+            ->assertOk()
+            ->assertSee('登录会话已过期，请重新登录');
     }
 
     public function test_分流页完善资料创建账号并登录(): void

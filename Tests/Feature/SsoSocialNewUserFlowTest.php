@@ -229,6 +229,57 @@ class SsoSocialNewUserFlowTest extends TestCase
         $this->assertSame((int) $binding->user_id, (int) auth('web')->id());
     }
 
+    // ---------------------------------------------------------------- 5. 子域名模式分流页
+
+    public function test_子域名模式分流页平台解析正确不被误拦(): void
+    {
+        // 子域名部署（access_mode=domain）：前台路由无 /sso 前缀，Laravel path() 返回的
+        // 路径不带前导斜杠。修复前平台解析正则匹配失败、兜底为 wechat，导致 QQ 等
+        // 非微信平台分流页进页即误报「登录会话已过期」跳回登录页。
+        $this->setConfig('access_mode', 'domain');
+        $this->setConfig('access_domain', 'sso.test');
+        $this->reRegisterRoutes();
+
+        // QQ 平台：进页正常渲染并回填昵称（修复前误拦跳登录页）
+        $token = $this->putOauthDataFor('qq', 'qq_888', 'QQ昵称');
+        $response = $this->get('http://sso.test/auth/qq/complete?token=' . $token);
+        $response->assertOk();
+        $this->assertStringContainsString('value="QQ昵称"', (string) $response->getContent());
+
+        // GitHub 平台：同样不被误拦
+        $token = $this->putOauthDataFor('github', 'gh_888', 'GH昵称');
+        $this->get('http://sso.test/auth/github/complete?token=' . $token)
+            ->assertOk()
+            ->assertSee('GH昵称');
+
+        // token 无效时仍正确拦截回登录页（修复不放松校验）
+        $this->get('http://sso.test/auth/qq/complete?token=' . str_repeat('d', 32))
+            ->assertRedirect('http://sso.test/login');
+    }
+
+    public function test_子域名模式微信分流页正常渲染(): void
+    {
+        $this->setConfig('access_mode', 'domain');
+        $this->setConfig('access_domain', 'sso.test');
+        $this->reRegisterRoutes();
+
+        // 微信平台：无前缀路径下平台解析为 wechat，进页正常渲染
+        $token = $this->putOauthData();
+        $response = $this->get('http://sso.test/auth/wechat/complete?token=' . $token);
+        $response->assertOk();
+        $this->assertStringContainsString('value="微信昵称"', (string) $response->getContent());
+    }
+
+    /**
+     * setUp 已按 path 模式注册过前台路由，且同一 Provider 不会被二次 boot；
+     * 反射仅重跑路由注册，使新配置（domain 模式）下的前台路由生效
+     */
+    protected function reRegisterRoutes(): void
+    {
+        $provider = new \App\Apps\CmsproSso\ServiceProvider($this->app);
+        (new \ReflectionMethod($provider, 'registerRoutes'))->invoke($provider);
+    }
+
     // ---------------------------------------------------------------- 辅助方法
 
     /**
@@ -262,16 +313,24 @@ class SsoSocialNewUserFlowTest extends TestCase
      */
     protected function putOauthData(): string
     {
+        return $this->putOauthDataFor('wechat', 'wx_888', '微信昵称');
+    }
+
+    /**
+     * 直接写入一条指定平台的暂存授权数据，返回 token
+     */
+    protected function putOauthDataFor(string $platform, string $openid, string $nickname): string
+    {
         $token = bin2hex(random_bytes(16));
         Cache::put('cmspro_sso_oauth_data:' . $token, [
-            'openid'        => 'wx_888',
+            'openid'        => $openid,
             'unionid'       => null,
-            'nickname'      => '微信昵称',
-            'avatar'        => 'https://a.b/wx.png',
+            'nickname'      => $nickname,
+            'avatar'        => 'https://a.b/x.png',
             'access_token'  => '',
             'refresh_token' => '',
-            'platform'      => 'wechat',
-            'raw_data'      => ['id' => 888],
+            'platform'      => $platform,
+            'raw_data'      => null,
         ], 600);
 
         return $token;

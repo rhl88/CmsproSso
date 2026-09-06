@@ -1260,6 +1260,10 @@ class AuthController extends Controller
 
         // PC 扫码模式：解析/创建用户，将结果存 Cache，redirect 到提示页
         if ($isPcMode) {
+            // 回调路由即平台真相源，统一覆写授权数据中的平台标识（与普通模式一致，
+            // 防御外挂模式硬编码 wechat 导致 PC 分流页绑定校验平台不匹配）
+            $data['platform'] = $platform;
+
             if ($needInvite) {
                 // 新用户且开启邀请注册：授权数据暂存 Cache，PC 端轮询到 need_invite 后弹窗收集邀请码
                 $token = bin2hex(random_bytes(16));
@@ -1276,6 +1280,11 @@ class AuthController extends Controller
             if ($existingUser === null) {
                 $token = bin2hex(random_bytes(16));
                 Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+                Log::info('SSO分流: PC扫码新用户授权数据暂存', [
+                    'token'    => $token,
+                    'platform' => $platform,
+                    'openid'   => (string) $data['openid'],
+                ]);
                 Cache::put(self::CACHE_LOGIN_RESULT_PREFIX . $state, [
                     'need_setup'  => true,
                     'setup_token' => $token,
@@ -1315,6 +1324,11 @@ class AuthController extends Controller
         if ($existingUser === null) {
             $token = bin2hex(random_bytes(16));
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+            Log::info('SSO分流: 社交新用户授权数据暂存', [
+                'token'    => $token,
+                'platform' => $platform,
+                'openid'   => (string) $data['openid'],
+            ]);
 
             return redirect($this->pendingCompleteUrl($token, $redirect, $platform));
         }
@@ -2057,6 +2071,10 @@ class AuthController extends Controller
         if ($existingUser === null) {
             $token = bin2hex(random_bytes(16));
             Cache::put(self::CACHE_OAUTH_DATA_PREFIX . $token, $data, self::LOGIN_STATE_TTL);
+            Log::info('SSO分流: 快捷登录新用户授权数据暂存', [
+                'token'  => $token,
+                'openid' => (string) $data['openid'],
+            ]);
 
             $targetUrl = $this->settingService->get('invite_enabled', '0') === '1'
                 ? '/auth/relay/complete-invite'
@@ -2276,6 +2294,14 @@ class AuthController extends Controller
 
         $data = Cache::pull(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
         if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== $expectedPlatform) {
+            // 诊断日志：定位建号校验失败（token 过期/伪造/平台不一致）
+            Log::warning('SSO分流: 完善资料建号校验失败', [
+                'token'  => $validated['token'],
+                'expect' => $expectedPlatform,
+                'exists' => is_array($data),
+                'actual' => is_array($data) ? (string) ($data['platform'] ?? '') : null,
+            ]);
+
             return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
         }
 
@@ -2347,6 +2373,14 @@ class AuthController extends Controller
 
         $data = Cache::get(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
         if (!$data || !is_array($data) || (string) ($data['platform'] ?? '') !== $expectedPlatform) {
+            // 诊断日志：定位绑定校验失败（token 过期/伪造/平台不一致）
+            Log::warning('SSO分流: 账号绑定校验失败', [
+                'token'  => $validated['token'],
+                'expect' => $expectedPlatform,
+                'exists' => is_array($data),
+                'actual' => is_array($data) ? (string) ($data['platform'] ?? '') : null,
+            ]);
+
             return response()->json(['code' => 400, 'message' => '登录会话已过期，请重新登录'], 400);
         }
 

@@ -1,4 +1,4 @@
-﻿# 统一登录 · 使用指南
+# 统一登录 · 使用指南
 
 > 版本：1.5.0 | 更新日期：2026-09-02
 > 应用版本：1.8.0 | 应用 ID：`cmspro.sso`
@@ -369,4 +369,5 @@ app/Apps/CmsproSso/
 | 2.0.15 | 2026-09-04 | 新增通用「绑定中心」共用组件 `cmspro.sso::Home.partials.bind-center`：前台登录后首页重构为复用该组件（行为不变）；当本应用启用时，框架账号管理页（`user.account.index` / `/account`）新增「账号绑定」卡片与弹层入口，可绑定已开启的快捷登录（手机/邮箱/微信/QQ 等），入口按统一登录应用启用状态条件渲染（`AppModel::app_id=cmspro.sso` 且状态启用）；绑定中心平台图标改用 layui 内置图标，避免跨页面样式依赖；新增 `SsoBindCenterComponentTest`（全量 181 用例通过）                                                                                                                                                                | <br /> |
 | 2.0.16 | 2026-09-04 | 快捷模式中转客户端登录页快捷登录入口改为按后台启用状态显示：此前客户端模式仅显示微信/QQ，支付宝/抖音/微博/GitHub 即使后台已启用也隐藏；现客户端模式同样展示全部已启用平台入口，点击经 `/auth/{platform}/login-url` 由服务端检测中转客户端并委托服务端代跳，与独立站模式一致                                                                                                                                                                                                                                                                                                      | <br /> |
 | 2.0.17 | 2026-09-04 | 调整前台账号管理页「账号绑定」注入方式：此前为直接修改框架账号页视图，现转由本应用按 CmsproNotepad 覆盖 dashboard 模式，在 ServiceProvider 覆盖系统同名路由 user.account（/user/account）渲染应用视图——保留系统个人信息管理并注入账号绑定入口与共用绑定中心组件，全程不修改任何框架文件（全量 88 用例通过） | <br /> |
+| 2.0.18 | 2026-09-06 | 修复前台登录后首页报「Uncaught ReferenceError: layui is not defined」：绑定中心组件此前在 content 区引入，随 `@yield('content')` 渲染于布局 layui.js 加载之前，其脚本顶层 `layui.use(...)` 执行时 layui 尚未定义；现将引入位置移至 `@section('script')`（layui.js 之后），与组件使用约定及框架账号管理页引入方式一致（浏览器实测首页控制台无报错、绑定中心弹层正常打开） | <br /> |
 

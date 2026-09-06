@@ -30,12 +30,11 @@
         </button>
     </div>
 </div>
-
-{{-- 绑定中心（共用组件：渲染弹层与脚本，入口为上方 .sso-bind-center-open 按钮） --}}
-@include('cmspro.sso::Home.partials.bind-center')
 @endsection
 
 @section('script')
+{{-- 绑定中心（共用组件：渲染弹层与脚本，入口为上方 .sso-bind-center-open 按钮；须在 layui.js 加载后的 script 区引入） --}}
+@include('cmspro.sso::Home.partials.bind-center')
 <script>
 layui.use(['jquery', 'layer'], function(){
     var $ = layui.jquery;

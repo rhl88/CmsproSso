@@ -203,6 +203,7 @@ if ($context) {
 11. **快捷模式令牌安全**：访问令牌明文仅签发时返回一次，库存 SHA256 哈希不可逆推；授权码一次性使用且 5 分钟有效；回调地址白名单精确匹配，禁止使用前缀/通配匹配（防开放重定向）。
 12. **快捷模式身份锚点**：服务端为纯跳板（不建号、不绑定、不保存任何用户数据），客户端以「社交平台真实 openid」为 open_id（platform=relay）建立本地映射，同一社交账号无论经哪个服务端中转、中转哪个社交平台均对应同一本地账号；社交授权数据（openid/unionid/昵称/头像/令牌/raw_data）经 Cache 暂存凭 data_token 一次性透传，服务端不落库。
 13. **快捷模式扩展平台**：中转透传链路平台无关——新增可中转社交平台时，在 `OAuthService::PLATFORMS` 增加定义并为该平台实现配置判断（启用开关 + 凭证完整性）与社交回调（`/auth/{platform}/callback`），服务端开放 API 与客户端登录页入口自动生效，服务端与客户端中转逻辑均无需改动。
+14. **模板文件禁止带 UTF-8 BOM**：新建或编辑 Blade 模板（含布局、页面、partials）时，必须以「UTF-8 无 BOM」格式保存。BOM（`EF BB BF`）位于文件首字节时，Blade 渲染会将其原样输出到 HTML 最前面，导致页面顶部出现一条空白。排查方法：网页源代码首行若出现 `﻿` 字符（U+FEFF）即为 BOM；可用 PowerShell 批量检测：`[System.IO.File]::ReadAllBytes($p)` 前三字节为 `0xEF 0xBB 0xBF` 即带 BOM。Windows 下用记事本/部分编辑器「UTF-8」保存默认带 BOM，需另存为「UTF-8 无 BOM」。
 
 ## 八、版本与更新日志
 
@@ -220,3 +221,4 @@ if ($context) {
 | 1.9.0 | 2026-09-02 |开发团队 |绑定中心微信/QQ 支持 PC 扫码绑定：`oauthBindUrl()` 支持 `device=pc`（state 存 Cache 绑定键 `cmspro_sso_bind_state:` 含目标用户 id）、`bindPcOauthCallback()` 跨设备回调落库（绑定目标取自 Cache，不依赖回调请求自身登录态）、`oauthBindStatus()` 轮询绑定结果（`cmspro_sso_bind_result:`，成功 `bound`/失败 `error`） |
 | 1.10.0 | 2026-09-03 |开发团队 |新增快捷模式（社交登录中转）：`OAuthService`（服务端授权码流程：签发/换取/解析/吊销）+ `RelayClientService`（客户端与服务端通信）+ `isRelayServer()/isRelayClient()` 角色判断；开放 API `/api/cmspro/sso/oauth`（platforms/token/userinfo/revoke）；客户端以「sso+服务端用户id」为身份锚点建号登录 |
 | 2.0.9 | 2026-09-04 |开发团队 |服务端重构为纯跳板透传（不建号、不绑定、不落任何用户数据）：`OAuthService` 去 User 依赖——`issueAuthCode` 改收 dataToken（user_id 为 null）、`resolveToken` 返回 data_token 上下文、`userinfoData(string $dataToken)` 凭暂存键透传社交平台真实数据；`RelayClientService::userinfo` 期望透传结构（openid/unionid/nickname/avatar/令牌/platform/raw_data）；客户端 relayCallback/relayLoginStatus 改以社交真实 openid 为身份锚点建号；`OAuthController@authorize` 已登录不再静默签发；迁移 auth_codes/access_tokens 表 user_id 改 nullable、access_tokens 新增 data_token；透传链路平台无关，新增第三方登录仅需服务端接入社交回调 |
+| 2.1.1 | 2026-09-08 |开发团队 |修复登录页顶部空白条：`login.blade.php` 与 `layouts/home.blade.php` 带 UTF-8 BOM 被渲染输出；已移除并在注意事项新增第 14 条「模板文件禁止带 UTF-8 BOM」规范（保存格式、排查方法、PowerShell 批量检测命令） |

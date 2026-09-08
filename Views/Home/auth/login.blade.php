@@ -1,4 +1,4 @@
-﻿@extends('cmspro.sso::layouts.home')
+@extends('cmspro.sso::layouts.home')
 
 @section('title', $configs['login_title'])
 

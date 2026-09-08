@@ -1,4 +1,4 @@
-@extends('cmspro.sso::layouts.home')
+﻿@extends('cmspro.sso::layouts.home')
 
 @section('title', $configs['login_title'])
 
@@ -32,44 +32,44 @@
     <div class="sso-divider"><span>其他登录方式</span></div>
     <div class="sso-oauth-row">
         @if($configs['wechat_enabled'] === '1')
-        <button type="button" class="sso-wechat-btn" id="wechat-login-btn">
-            <i class="layui-icon layui-icon-login-wechat"></i> 微信
+        <button type="button" class="sso-oauth-icon-btn sso-wechat" id="wechat-login-btn" title="微信登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/wechat.png') }}" alt="微信登录">
         </button>
         @endif
         @if($configs['qq_enabled'] === '1')
-        <button type="button" class="sso-qq-btn" id="qq-login-btn">
-            <i class="sso-qq-icon"></i> QQ
+        <button type="button" class="sso-oauth-icon-btn sso-qq" id="qq-login-btn" title="QQ登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/qq.png') }}" alt="QQ登录">
         </button>
         @endif
         @if($configs['phone_login_enabled'] === '1')
-        <button type="button" class="sso-phone-btn" id="phone-login-btn">
-            <i class="layui-icon layui-icon-cellphone"></i> 手机
+        <button type="button" class="sso-oauth-icon-btn sso-phone" id="phone-login-btn" title="手机登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/phone.png') }}" alt="手机登录">
         </button>
         @endif
         @if($configs['email_login_enabled'] === '1')
-        <button type="button" class="sso-email-btn" id="email-login-btn">
-            <i class="layui-icon layui-icon-email"></i> 邮箱
+        <button type="button" class="sso-oauth-icon-btn sso-email" id="email-login-btn" title="邮箱登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/email.png') }}" alt="邮箱登录">
         </button>
         @endif
         {{-- 支付宝/抖音/微博/GitHub：仅按后台启用状态显示；客户端（中转）模式下同样展示，点击由服务端代跳中转 --}}
         @if($configs['alipay_enabled'] === '1')
-        <button type="button" class="sso-social-btn sso-alipay" id="alipay-login-btn">
-            <i class="sso-social-icon"></i> 支付宝
+        <button type="button" class="sso-oauth-icon-btn sso-alipay" id="alipay-login-btn" title="支付宝登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/alipay.png') }}" alt="支付宝登录">
         </button>
         @endif
         @if($configs['douyin_enabled'] === '1')
-        <button type="button" class="sso-social-btn sso-douyin" id="douyin-login-btn">
-            <i class="sso-social-badge">抖</i> 抖音
+        <button type="button" class="sso-oauth-icon-btn sso-douyin" id="douyin-login-btn" title="抖音登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/douyin.png') }}" alt="抖音登录">
         </button>
         @endif
         @if($configs['weibo_enabled'] === '1')
-        <button type="button" class="sso-social-btn sso-weibo" id="weibo-login-btn">
-            <i class="sso-social-icon"></i> 微博
+        <button type="button" class="sso-oauth-icon-btn sso-weibo" id="weibo-login-btn" title="微博登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/weibo.png') }}" alt="微博登录">
         </button>
         @endif
         @if($configs['github_enabled'] === '1')
-        <button type="button" class="sso-social-btn sso-github" id="github-login-btn">
-            <i class="sso-social-icon"></i> GitHub
+        <button type="button" class="sso-oauth-icon-btn sso-github" id="github-login-btn" title="GitHub登录">
+            <img src="{{ asset('apps/cmspro.sso/icon/github.png') }}" alt="GitHub登录">
         </button>
         @endif
     </div>

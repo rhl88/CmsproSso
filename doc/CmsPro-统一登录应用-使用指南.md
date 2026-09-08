@@ -335,7 +335,6 @@ app/Apps/CmsproSso/
 | 子域名模式无法访问        | 配置 DNS 解析、Web 服务器虚拟主机，`.env` 设置 `SESSION_DOMAIN=.example.com` |
 | 切换访问模式后不生效       | 执行 `php artisan route:clear && php artisan config:clear`      |
 | 二维码接口 500        | 确认 `endroid/qr-code` 依赖已安装                                    |
-| 页面顶部出现空白条        | 模板文件带 UTF-8 BOM（`EF BB BF`）被 Blade 原样输出所致，将文件另存为「UTF-8 无 BOM」格式；排查方法：查看网页源代码首行是否有 `﻿` 字符（详见扩展指南注意事项第 14 条） |
 
 ## 七、版本历史
 
@@ -376,5 +375,4 @@ app/Apps/CmsproSso/
 | 2.0.21 | 2026-09-06 | 修复支付宝扫码登录回调报「支付宝用户授权失败，未获取到 openid」：支付宝网页授权（`openauth.alipay.com`）跳出时回传参数名为 `auth_code`（区别于微信/QQ/抖音/微博/GitHub 的 `code`），而 `oauthCallback` 仅读取 `code`，导致回调落入外挂分支、因无 openid 触发 400 被框架兜底渲染为 500；现支付宝平台兼容读取 `auth_code`（`code` 为空且平台为 alipay 时回退 `auth_code`），其余平台不受影响；新增 `SsoAlipayCallbackTest`（登录 URL state、auth_code 换取凭证登录老用户、换取失败、无凭证四例，应用全量 106 用例通过） | <br /> |
 | 2.0.22 | 2026-09-06 | 修复 PC 扫码绑定手机端停留登录页：`bindPcOauthCallback` 原跳转受保护 `/home`，手机端无登录态被 `cmspro.sso.auth` 中间件重定向 `/login?redirect=...`；改为跳转公开提示页 `pc-success?result=bind_success`（成功）/`result=bind_failed`（绑定目标不存在/冲突），手机端无需登录态即可展示结果并自动关闭，PC 端仍经 `bind-status` 轮询取结果；`pc-success` 新增绑定成功/失败语义分支（绑定失败不自动关闭，与登录失败一致）；`SsoPcBindTest` 适配跳转断言并新增提示页文案用例（18 用例通过） | <br /> |
 | 2.1.0  | 2026-09-08 | 前台登录页「其他登录方式」改版为圆形品牌图标按钮：微信/QQ/手机/邮箱/支付宝/抖音/微博/GitHub 八类入口统一使用 `sso-oauth-icon-btn` 图标按钮样式（内嵌真实品牌 PNG 图标，图标资源位于应用 `Assets/icon/` 目录，发布至 `public/apps/cmspro.sso/icon/`），hover 缩放 + 阴影交互；移除旧文字徽标样式（`sso-social-btn`/`sso-social-icon`/`sso-social-badge` 系列与 base64 SVG 品牌图标），入口显示仍受后台对应平台启停开关控制 | <br /> |
-| 2.1.1  | 2026-09-08 | 修复登录页顶部空白条：`login.blade.php` 与 `layouts/home.blade.php` 模板文件带 UTF-8 BOM（`EF BB BF`），Blade 渲染时被原样输出到 HTML 最前面形成空白；已移除两文件 BOM 并全应用扫描确认无残留；常见问题表新增排查条目，扩展指南注意事项新增「模板文件禁止带 BOM」规范 | <br /> |
 

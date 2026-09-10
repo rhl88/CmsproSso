@@ -269,7 +269,7 @@
             this.container.innerHTML = '<div class="cw-box cw-click-wrap">'
                 + '<div class="cw-click-target">' + this.esc(data.target_text || '') + '</div>'
                 + '<div class="cw-click-area"><img src="' + data.image + '" alt="点选验证码"></div>'
-                + '<div class="cw-click-foot">已点击 <span class="cw-count">0</span> 次 &nbsp;|&nbsp; <a class="cw-reset">重置</a></div>'
+                + '<div class="cw-click-foot">已点击 <span class="cw-count">0</span> 次 &nbsp;|&nbsp; <a class="cw-reset">重置</a> &nbsp;|&nbsp; <a class="cw-refresh">刷新</a></div>'
                 + '</div>';
 
             var area = this.container.querySelector('.cw-click-area');
@@ -297,6 +297,11 @@
                 for (var i = 0; i < marks.length; i++) {
                     marks[i].remove();
                 }
+            });
+
+            // 刷新：换一张全新的点选验证码
+            this.container.querySelector('.cw-refresh').addEventListener('click', function () {
+                self.refresh();
             });
         },
 

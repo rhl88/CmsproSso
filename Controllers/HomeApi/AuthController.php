@@ -64,6 +64,10 @@ class AuthController extends Controller
     protected const EMAIL_CODE_TTL = 10;          // 验证码有效期（分钟）
     protected const EMAIL_CODE_MAX_ATTEMPTS = 3;  // 每分钟内单个邮箱最多发送次数
 
+    // Cache 键前缀：找回密码手机验证码（独立于登录验证码，避免混用）
+    protected const CACHE_PWD_RESET_PHONE_PREFIX = 'cmspro_sso_pwd_reset_phone:';
+    protected const PWD_RESET_CODE_TTL = 10;      // 验证码有效期（分钟）
+
     public function __construct(
         protected SettingService $settingService,
         protected SmsService $smsService,
@@ -464,6 +468,106 @@ class AuthController extends Controller
             'group_id' => $defaultGroup?->id,
             'status'   => 1,
         ]);
+    }
+
+    // ================================================================ 找回密码（手机短信通道；邮箱通道复用系统 /api/user/password/* 接口）
+
+    /**
+     * 找回密码：发送手机验证码短信
+     */
+    public function sendForgotPhoneCode(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isPhoneLoginEnabled()) {
+            return response()->json(['code' => 400, 'message' => '系统未开启手机找回密码功能'], 400);
+        }
+
+        if (! $this->smsService->isConfigured()) {
+            return response()->json(['code' => 400, 'message' => '短信服务未配置，请联系管理员'], 400);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'required|string|regex:/^1\d{10}$/',
+        ], [
+            'phone.required' => '请输入手机号',
+            'phone.regex'    => '手机号格式不正确',
+        ]);
+
+        $phone = $validated['phone'];
+
+        // 手机号必须已注册（避免向无关手机号发送短信），语义与邮箱找回的「该邮箱未注册」一致
+        if (! User::where('phone', $phone)->exists()) {
+            return response()->json(['code' => 422, 'message' => '该手机号未注册'], 422);
+        }
+
+        $throttleKey = 'cmspro_sso_pwd_reset_throttle:' . $phone;
+
+        if (RateLimiter::tooManyAttempts($throttleKey, self::PHONE_CODE_MAX_ATTEMPTS)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return response()->json(['code' => 429, 'message' => "发送过于频繁，请 {$seconds} 秒后再试"], 429);
+        }
+        RateLimiter::hit($throttleKey, 60);
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        Cache::put(self::CACHE_PWD_RESET_PHONE_PREFIX . $phone, $code, now()->addMinutes(self::PWD_RESET_CODE_TTL));
+
+        $result = $this->smsService->sendVerificationCode($phone, $code);
+
+        if (! $result['success']) {
+            // 发送失败清除验证码缓存，避免残留
+            Cache::forget(self::CACHE_PWD_RESET_PHONE_PREFIX . $phone);
+            return response()->json(['code' => 500, 'message' => '短信发送失败：' . $result['message']], 500);
+        }
+
+        return response()->json(['code' => 0, 'message' => '验证码已发送']);
+    }
+
+    /**
+     * 找回密码：凭手机验证码重置密码
+     */
+    public function resetPasswordByPhone(Request $request): JsonResponse
+    {
+        if (! $this->settingService->isPhoneLoginEnabled() || ! $this->smsService->isConfigured()) {
+            return response()->json(['code' => 400, 'message' => '系统未开启手机找回密码功能'], 400);
+        }
+
+        $validated = $request->validate([
+            'phone'                 => 'required|string|regex:/^1\d{10}$/',
+            'code'                  => 'required|string|size:6',
+            'password'              => 'required|string|min:6|max:20',
+            'password_confirmation' => 'required|string|min:6|max:20',
+        ], [
+            'phone.required'    => '请输入手机号',
+            'phone.regex'       => '手机号格式不正确',
+            'code.required'     => '请输入验证码',
+            'code.size'         => '验证码为6位数字',
+            'password.required' => '请输入新密码',
+            'password.min'      => '新密码至少6个字符',
+            'password_confirmation.required' => '请再次输入新密码',
+        ]);
+
+        if ($validated['password'] !== $validated['password_confirmation']) {
+            return response()->json(['code' => 422, 'message' => '两次密码输入不一致'], 422);
+        }
+
+        $cacheKey = self::CACHE_PWD_RESET_PHONE_PREFIX . $validated['phone'];
+        $cached = Cache::get($cacheKey);
+
+        if (! $cached || ! hash_equals((string) $cached, (string) $validated['code'])) {
+            return response()->json(['code' => 422, 'message' => '验证码无效或已过期'], 422);
+        }
+
+        // 一次性消费，防重放
+        Cache::forget($cacheKey);
+
+        $user = User::where('phone', $validated['phone'])->first();
+
+        if (! $user || $user->status?->value === 0) {
+            return response()->json(['code' => 422, 'message' => '账号不存在或已被禁用'], 422);
+        }
+
+        $user->update(['password' => Hash::make($validated['password'])]);
+
+        return response()->json(['code' => 0, 'message' => '密码重置成功']);
     }
 
     /**

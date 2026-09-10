@@ -58,6 +58,10 @@ Route::post('/auth/phone/login', [AuthController::class, 'phoneLogin']);
 Route::post('/auth/email/code', [AuthController::class, 'sendEmailCode']);
 Route::post('/auth/email/login', [AuthController::class, 'emailLogin']);
 
+// 找回密码 API（手机短信通道；邮箱通道复用系统 /api/user/password/* 接口）
+Route::post('/auth/forgot/phone/code', [AuthController::class, 'sendForgotPhoneCode']);
+Route::post('/auth/forgot/phone/reset', [AuthController::class, 'resetPasswordByPhone']);
+
 // 邀请码购买 API（游客可访问，仅在线购买模式开启时可用）
 Route::get('/invite/channels', [InviteController::class, 'channels']);
 Route::post('/invite/order', [InviteController::class, 'createOrder']);

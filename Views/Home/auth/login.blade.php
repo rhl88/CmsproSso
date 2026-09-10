@@ -81,7 +81,7 @@
         @else
         <span></span>
         @endif
-        @if(\mail_configured())
+        @if($configs['forgot_available'] === '1')
         <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/forgot-password') . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '') }}">找回密码</a>
         @endif
     </div>

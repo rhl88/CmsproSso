@@ -81,9 +81,7 @@
         @else
         <span></span>
         @endif
-        @if($configs['forgot_available'] === '1')
-        <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/forgot-password') . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '') }}">找回密码</a>
-        @endif
+        <a href="{{ \App\Apps\CmsproSso\Services\ShareService::frontUrl('/forgot-password') . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '') }}">忘记密码</a>
     </div>
 
     <div class="sso-tip">登录即代表同意本站服务条款</div>

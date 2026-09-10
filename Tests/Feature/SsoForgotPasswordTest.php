@@ -16,7 +16,7 @@ use Tests\TestCase;
  *
  * 覆盖：
  *   1. 找回密码页渲染：通道全关提示、单通道表单、双通道 tab
- *   2. 登录页「找回密码」入口按通道可用性显示
+ *   2. 登录页「忘记密码」入口默认显示
  *   3. 手机找回 API：验证码发送（未注册手机拦截/成功发送/通道关闭拦截）与密码重置
  *      （验证码错误/一次性消费/两次密码不一致/禁用账号拦截）
  *   邮箱通道复用系统 /api/user/password/* 接口（框架级测试覆盖），此处不重复验证。
@@ -79,29 +79,13 @@ class SsoForgotPasswordTest extends TestCase
             ->assertSee('请输入注册手机号');
     }
 
-    public function test_登录页通道全关时不显示找回密码入口(): void
+    public function test_登录页默认显示忘记密码入口(): void
     {
+        // 入口不做通道显隐判断，默认显示（找回密码页内再做通道可用性提示）
         $this->get('/sso/login')
             ->assertOk()
-            ->assertDontSee('>找回密码</a>', false);
-    }
-
-    public function test_登录页仅邮箱开启时显示找回密码入口(): void
-    {
-        $this->enableEmailChannel();
-
-        $this->get('/sso/login')
-            ->assertOk()
-            ->assertSee('找回密码');
-    }
-
-    public function test_登录页仅手机开启时显示找回密码入口(): void
-    {
-        $this->enablePhoneChannel();
-
-        $this->get('/sso/login')
-            ->assertOk()
-            ->assertSee('找回密码');
+            ->assertSee('忘记密码')
+            ->assertSee('forgot-password');
     }
 
     // ---------------------------------------------------------------- 2. 手机验证码发送

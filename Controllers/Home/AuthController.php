@@ -62,8 +62,6 @@ class AuthController extends Controller
             // 登录验证码：后台开启且验证码应用就绪、启用位置包含 login 时渲染
             'captcha_enabled' => $this->settingService->isCaptchaSceneEnabled('login') ? '1' : '0',
             'captcha_driver'  => $this->settingService->getCaptchaDriver(),
-            // 找回密码入口：邮箱或手机通道任一可用时显示
-            'forgot_available' => ($this->forgotChannels()['email'] || $this->forgotChannels()['phone']) ? '1' : '0',
         ];
 
         return view('cmspro.sso::Home.auth.login', [

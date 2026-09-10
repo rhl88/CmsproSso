@@ -106,7 +106,7 @@
 | 35   | 401 处理     | 前台 JS 统一处理登录过期                                                                   | `Views/Home/*.blade.php`                                                        |
 | 36   | 前台 API 路径  | `window.SSO_API_BASE` 全局前缀，不随访问模式变化                                              | `Views/layouts/home.blade.php`                                                  |
 | 36.1 | 注册邮箱验证码    | 系统已配置邮箱时注册必填 6 位验证码（复用系统 `/api/user/register/email-code` 接口），验证码一次性失效；未配置邮箱时自动跳过 | `Controllers/HomeApi/AuthController.php` / `Views/Home/auth/register.blade.php` |
-| 36.2 | 找回密码双通道     | 登录页「注册账号」同行右侧显示入口（邮箱/手机通道任一可用时）；找回密码页两步流程（发送验证码 → 凭验证码重置新密码，成功后跳转登录页）：邮箱/手机均开启时以 tab 切换（邮箱找回/手机找回），仅开启其一则直接显示对应表单，均关闭时显示「系统未开启找回密码功能，请联系管理员」；邮箱通道复用系统 `/api/user/password/*` 接口，手机通道走 SSO 新增接口（`/auth/forgot/phone/code`、`/auth/forgot/phone/reset`，验证码独立缓存键 `cmspro_sso_pwd_reset_phone:*`，一次性消费防重放，未注册手机号拦截、频控与登录验证码一致）  | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` / `Controllers/HomeApi/AuthController.php` / `Routes/home-api.php` |
+| 36.2 | 找回密码双通道     | 登录页「注册账号」同行右侧默认显示「忘记密码」入口（不做通道显隐判断）；找回密码页两步流程（发送验证码 → 凭验证码重置新密码，成功后跳转登录页）：邮箱/手机均开启时以 tab 切换（邮箱找回/手机找回），仅开启其一则直接显示对应表单，均关闭时显示「系统未开启找回密码功能，请联系管理员」；邮箱通道复用系统 `/api/user/password/*` 接口，手机通道走 SSO 新增接口（`/auth/forgot/phone/code`、`/auth/forgot/phone/reset`，验证码独立缓存键 `cmspro_sso_pwd_reset_phone:*`，一次性消费防重放，未注册手机号拦截、频控与登录验证码一致）  | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` / `Controllers/HomeApi/AuthController.php` / `Routes/home-api.php` |
 | 37   | 前台页面路径     | `window.SSO_BASE` 兼容双模式                                                          | `Views/layouts/home.blade.php`                                                  |
 
 ## 十、菜单系统
@@ -179,5 +179,6 @@
 | 2.5.2 | 2026-09-10 | 登录页错误提示修复：登录接口校验失败（框架统一 40201「请求参数不合法」，data 为字段错误映射）时，登录页此前仅显示通用文案、丢失字段错误——补齐与注册页一致的 `extractError()`（优先取 data 字段错误首条，如「密码至少6个字符」，否则回退 message），success/error 分支统一走该提取；注册页原逻辑已正常无需改动 |
 | 2.5.3 | 2026-09-10 | 文字点选验证码增加刷新：点选模式底部操作区在「重置」右侧新增「刷新」（换一张全新验证码），`captcha-widget.js` 与验证码应用演示页同步，版本联动：cmspro.captcha 1.1.2 |
 | 2.5.4 | 2026-09-10 | 修复滑块拼图验证码拖不动的 bug：`bindDrag` 的 `onMove` 此前只传总位移、不传拖动起始基准，滑块 `onMove` 中 `baseLeft` 为 undefined 导致 `left = NaNpx`（赋值被浏览器静默忽略，控制台无报错）——`bindDrag` 增加按下时捕获基准的 `getBase` 机制并作为第二参数传递；顺带修正旋转验证码拖动「总位移当增量累计导致越拖越快」的问题（改为基准角度 + 总位移的绝对角度模式，答案归一化 0-359） |
-| 2.6.0 | 2026-09-10 | 找回密码双通道（邮箱/手机）：登录页「注册账号」同行右侧「找回密码」入口改为按通道可用性显示（原仅判 `mail_configured()`）；找回密码页支持邮箱/手机 tab 切换（均开启时 tab、单开启直接表单、全关显示「系统未开启找回密码功能，请联系管理员」）；新增手机找回 API（发送验证码 + 凭验证码重置密码，独立缓存键一次性消费防重放）；`SsoForgotPasswordTest` 14 用例（应用全量 150 用例） |
+| 2.6.0 | 2026-09-10 | 找回密码双通道（邮箱/手机）：找回密码页支持邮箱/手机 tab 切换（均开启时 tab、单开启直接表单、全关显示「系统未开启找回密码功能，请联系管理员」）；新增手机找回 API（发送验证码 + 凭验证码重置密码，独立缓存键一次性消费防重放）；`SsoForgotPasswordTest` 14 用例 |
+| 2.6.1 | 2026-09-10 | 登录页「找回密码」入口改名为「忘记密码」并默认显示（去除通道可用性显隐判断与 `forgot_available` 视图数据），通道可用性提示保留在找回密码页内；应用全量 148 用例 |
 

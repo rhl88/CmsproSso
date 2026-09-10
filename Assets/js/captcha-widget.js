@@ -235,7 +235,8 @@
         renderInputCaptcha: function (data) {
             var self = this;
             var placeholder = this.type === 'math' ? '输入计算结果' : '请输入图中字符';
-            var question = data.question ? '<div style="margin-bottom:8px;">' + this.esc(data.question) + '</div>' : '';
+            // 算术验证码图片内已绘制算式，无需重复显示文字
+            var question = (data.question && this.type !== 'math') ? '<div style="margin-bottom:8px;">' + this.esc(data.question) + '</div>' : '';
 
             this.container.innerHTML = '<div class="cw-box">'
                 + question

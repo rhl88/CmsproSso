@@ -108,13 +108,13 @@ class SsoCaptchaTest extends TestCase
     {
         $this->get('/sso/login')
             ->assertOk()
-            ->assertDontSee('id="captcha-box"', false)
-            ->assertDontSee('captcha-widget.js', false);
+            ->assertDontSee('captcha-widget.js', false)
+            ->assertDontSee('安全验证', false);
 
         $this->get('/sso/register')
             ->assertOk()
-            ->assertDontSee('id="captcha-box"', false)
-            ->assertDontSee('captcha-widget.js', false);
+            ->assertDontSee('captcha-widget.js', false)
+            ->assertDontSee('安全验证', false);
     }
 
     public function test_开启登录验证码后登录页渲染且注册页不渲染(): void
@@ -123,15 +123,17 @@ class SsoCaptchaTest extends TestCase
         $this->setConfig('captcha_enabled', '1');
         $this->setConfig('captcha_scenes', 'login');
 
+        // 验证码以「安全验证」弹层形式在点击登录时弹出（不内嵌表单，不影响 UI）
         $this->get('/sso/login')
             ->assertOk()
-            ->assertSee('id="captcha-box"', false)
-            ->assertSee('captcha-widget.js', false);
+            ->assertSee('captcha-widget.js', false)
+            ->assertSee('安全验证', false)
+            ->assertSee('openCaptchaVerify', false);
 
         $this->get('/sso/register')
             ->assertOk()
-            ->assertDontSee('id="captcha-box"', false)
-            ->assertDontSee('captcha-widget.js', false);
+            ->assertDontSee('captcha-widget.js', false)
+            ->assertDontSee('openCaptchaVerify', false);
     }
 
     public function test_开启注册验证码后注册页渲染(): void
@@ -142,19 +144,21 @@ class SsoCaptchaTest extends TestCase
 
         $this->get('/sso/register')
             ->assertOk()
-            ->assertSee('id="captcha-box"', false)
-            ->assertSee('captcha-widget.js', false);
+            ->assertSee('captcha-widget.js', false)
+            ->assertSee('安全验证', false)
+            ->assertSee('openCaptchaVerify', false);
     }
 
     public function test_验证码应用未就绪时开关不生效(): void
     {
-        // 开关开启、位置含 login，但未安装验证码应用 → 页面不渲染验证码
+        // 开关开启、位置含 login，但未安装验证码应用 → 页面不加载验证码组件
         $this->setConfig('captcha_enabled', '1');
         $this->setConfig('captcha_scenes', 'login');
 
         $this->get('/sso/login')
             ->assertOk()
-            ->assertDontSee('id="captcha-box"', false);
+            ->assertDontSee('captcha-widget.js', false)
+            ->assertDontSee('安全验证', false);
     }
 
     // ---------------------------------------------------------------- 3. 登录 API 验证码校验

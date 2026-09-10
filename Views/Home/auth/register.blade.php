@@ -50,12 +50,6 @@
             <input type="password" name="password_confirmation" placeholder="确认密码"
                    autocomplete="new-password" class="layui-input" lay-verify="required">
         </div>
-        @if(!empty($captcha_enabled))
-        {{-- 人机验证码：由「验证码」应用提供能力，key/answer 随注册表单提交 --}}
-        <div class="layui-form-item">
-            <div id="captcha-box"></div>
-        </div>
-        @endif
         @if(!empty($invite['enabled']))
         <div class="layui-form-item">
             <input type="text" name="invite_code" placeholder="邀请码"
@@ -106,15 +100,6 @@ layui.use(['form', 'jquery', 'layer'], function(){
     });
 
     var redirect = @json($redirect);
-
-    // 人机验证码组件（后台开启注册验证码时渲染）
-    @if(!empty($captcha_enabled))
-    var captchaWidget = new CaptchaWidget({
-        el: '#captcha-box',
-        driver: @json($captcha_driver),
-        baseUrl: '/api/captcha'
-    });
-    @endif
 
     // 回车提交注册表单
     $('form[lay-filter="register-form"]').on('keydown', function(e){
@@ -185,17 +170,53 @@ layui.use(['form', 'jquery', 'layer'], function(){
         return (res && res.message) ? res.message : '请求失败';
     }
 
+    // 注册提交：开启验证码时先弹出人机验证弹层，完成后再提交
     form.on('submit(register-submit)', function(data){
         var payload = $.extend({}, data.field, { redirect: redirect });
         @if(!empty($captcha_enabled))
-        // 未完成人机验证时禁止提交
-        if (!captchaWidget.isAnswerReady()) {
-            layer.msg('请先完成验证码验证', {icon: 2});
-            return false;
-        }
-        payload.captcha_key = captchaWidget.getKey();
-        payload.captcha_answer = captchaWidget.getAnswer();
+        openCaptchaVerify(payload);
+        @else
+        doRegister(payload);
         @endif
+        return false;
+    });
+
+    @if(!empty($captcha_enabled))
+    // 弹出安全验证层：验证码由「验证码」应用提供，完成验证后携带 key/answer 继续注册
+    function openCaptchaVerify(payload) {
+        layer.open({
+            type: 1,
+            title: '安全验证',
+            area: ['340px', 'auto'],
+            closeBtn: 1,
+            shadeClose: false,
+            content: '<div style="padding:16px 16px 20px;">'
+                + '<div id="captcha-box"></div>'
+                + '<button type="button" id="captcha-confirm" class="layui-btn layui-btn-fluid" style="margin-top:12px;background:#2563eb;">确认注册</button>'
+                + '</div>',
+            success: function(layero){
+                var widget = new CaptchaWidget({
+                    el: layero.find('#captcha-box')[0],
+                    driver: @json($captcha_driver),
+                    baseUrl: '/api/captcha'
+                });
+                layero.find('#captcha-confirm').on('click', function(){
+                    if (!widget.isAnswerReady()) {
+                        layer.msg('请先完成验证', {icon: 2});
+                        return;
+                    }
+                    payload.captcha_key = widget.getKey();
+                    payload.captcha_answer = widget.getAnswer();
+                    layer.closeAll();
+                    doRegister(payload);
+                });
+            }
+        });
+    }
+    @endif
+
+    // 提交注册请求；开启验证码时任何失败后延迟重弹验证层（验证码一次性消费，需重新验证）
+    function doRegister(payload) {
         var loadIdx = layer.load(2);
         $.ajax({
             url: window.SSO_API_BASE + '/auth/register',
@@ -210,7 +231,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 } else {
                     layer.msg(extractError(res), {icon: 2});
                     @if(!empty($captcha_enabled))
-                    captchaWidget.refresh();
+                    setTimeout(function(){ openCaptchaVerify(payload); }, 600);
                     @endif
                 }
             },
@@ -218,12 +239,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
                 layer.close(loadIdx);
                 layer.msg(extractError(xhr.responseJSON), {icon: 2});
                 @if(!empty($captcha_enabled))
-                captchaWidget.refresh();
+                setTimeout(function(){ openCaptchaVerify(payload); }, 600);
                 @endif
             }
         });
-        return false;
-    });
+    }
 });
 </script>
 @endsection

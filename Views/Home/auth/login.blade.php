@@ -20,6 +20,12 @@
             <input type="password" name="password" placeholder="密码"
                    autocomplete="current-password" class="layui-input" lay-verify="required">
         </div>
+        @if($configs['captcha_enabled'] === '1')
+        {{-- 人机验证码：由「验证码」应用提供能力，key/answer 随登录表单提交 --}}
+        <div class="layui-form-item">
+            <div id="captcha-box"></div>
+        </div>
+        @endif
         <div class="layui-form-item">
             <button type="button" class="layui-btn layui-btn-fluid" lay-submit lay-filter="login-submit"
                     style="background: #2563eb; height: 44px; font-size: 15px;">
@@ -91,6 +97,9 @@
 @endsection
 
 @section('script')
+@if($configs['captcha_enabled'] === '1')
+<script src="{{ asset('apps/cmspro.sso/js/captcha-widget.js') }}?v={{ filemtime(public_path('apps/cmspro.sso/js/captcha-widget.js')) }}"></script>
+@endif
 <script>
 layui.use(['form', 'jquery', 'layer'], function(){
     var form = layui.form;
@@ -107,6 +116,15 @@ layui.use(['form', 'jquery', 'layer'], function(){
     // QQ 登录功能选项（web：网页授权跳转 / qrcode：PC 扫码）
     var qqMode = @json($configs['qq_mode'] ?? 'web');
 
+    // 人机验证码组件（后台开启登录验证码时渲染）
+    @if($configs['captcha_enabled'] === '1')
+    var captchaWidget = new CaptchaWidget({
+        el: '#captcha-box',
+        driver: @json($configs['captcha_driver']),
+        baseUrl: '/api/captcha'
+    });
+    @endif
+
     // 回车提交登录表单
     $('form[lay-filter="login-form"]').on('keydown', function(e){
         if (e.key === 'Enter') {
@@ -117,11 +135,21 @@ layui.use(['form', 'jquery', 'layer'], function(){
 
     // 账号密码登录
     form.on('submit(login-submit)', function(data){
+        var payload = $.extend({}, data.field, { redirect: redirect });
+        @if($configs['captcha_enabled'] === '1')
+        // 未完成人机验证时禁止提交
+        if (!captchaWidget.isAnswerReady()) {
+            layer.msg('请先完成验证码验证', {icon: 2});
+            return false;
+        }
+        payload.captcha_key = captchaWidget.getKey();
+        payload.captcha_answer = captchaWidget.getAnswer();
+        @endif
         var loadIdx = layer.load(2);
         $.ajax({
             url: window.SSO_API_BASE + '/auth/login',
             type: 'POST',
-            data: $.extend({}, data.field, { redirect: redirect }),
+            data: payload,
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -130,6 +158,9 @@ layui.use(['form', 'jquery', 'layer'], function(){
                     });
                 } else {
                     layer.msg(res.message || '登录失败', {icon: 2});
+                    @if($configs['captcha_enabled'] === '1')
+                    captchaWidget.refresh();
+                    @endif
                 }
             },
             error: function(xhr){
@@ -140,6 +171,9 @@ layui.use(['form', 'jquery', 'layer'], function(){
                     if (res.message) msg = res.message;
                 } catch(e) {}
                 layer.msg(msg, {icon: 2});
+                @if($configs['captcha_enabled'] === '1')
+                captchaWidget.refresh();
+                @endif
             }
         });
         return false;

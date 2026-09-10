@@ -46,6 +46,9 @@ class AuthController extends Controller
             'is_relay_client' => $this->settingService->isRelayClient() ? '1' : '0',
             'allow_register'  => $this->settingService->get('allow_register', '1'),
             'invite_enabled'  => $this->settingService->get('invite_enabled', '0'),
+            // 登录验证码：后台开启且验证码应用就绪、启用位置包含 login 时渲染
+            'captcha_enabled' => $this->settingService->isCaptchaSceneEnabled('login') ? '1' : '0',
+            'captcha_driver'  => $this->settingService->getCaptchaDriver(),
         ];
 
         return view('cmspro.sso::Home.auth.login', [
@@ -74,6 +77,9 @@ class AuthController extends Controller
             'redirect'    => (string) $request->input('redirect', ''),
             'mailConfigured' => mail_configured(),
             'invite'      => $this->inviteViewData(),
+            // 注册验证码：后台开启且验证码应用就绪、启用位置包含 register 时渲染
+            'captcha_enabled' => $this->settingService->isCaptchaSceneEnabled('register') ? '1' : '0',
+            'captcha_driver'  => $this->settingService->getCaptchaDriver(),
         ]);
     }
 

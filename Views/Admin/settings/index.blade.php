@@ -162,6 +162,58 @@
                                     <div class="layui-form-mid layui-word-aux">登录成功后未指定 redirect 参数时的默认跳转地址</div>
                                 </div>
                             </div>
+
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">验证码开关</label>
+                                <div class="layui-input-block">
+                                    <input type="checkbox" name="captcha_enabled" lay-skin="switch" lay-text="开启|关闭" lay-filter="captcha_enabled"
+                                           {{ ($configs['captcha_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录/注册表单需先通过人机验证，由「验证码」应用提供能力</div>
+                                </div>
+                            </div>
+                            @if(!($captcha_installed ?? false) || !($captcha_enabled_app ?? false))
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                        @if(!($captcha_installed ?? false))
+                                        「验证码」应用当前<strong>未安装</strong>，请前往「应用管理」安装「验证码」应用。
+                                        @else
+                                        「验证码」应用已安装但<strong>未启用</strong>，请前往「应用管理」启用「验证码」应用。
+                                        @endif
+                                        依赖就绪前无法保存验证码开关。
+                                    </div>
+                                </div>
+                            </div>
+                            @endif
+                            <div id="captcha-extra-fields" style="{{ ($configs['captcha_enabled'] ?? '0') === '1' ? '' : 'display:none;' }}">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">启用位置</label>
+                                    <div class="layui-input-block" style="padding-top: 8px;">
+                                        <input type="checkbox" name="captcha_scene_login" value="login" title="登录" lay-skin="primary"
+                                               {{ ($captcha_scene_login ?? false) ? 'checked' : '' }}>
+                                        <input type="checkbox" name="captcha_scene_register" value="register" title="注册" lay-skin="primary"
+                                               {{ ($captcha_scene_register ?? false) ? 'checked' : '' }}>
+                                        <div class="layui-form-mid layui-word-aux">控制验证码在哪些表单生效，至少选择一项</div>
+                                    </div>
+                                </div>
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">验证码模式</label>
+                                    <div class="layui-input-block">
+                                        <div style="width: 220px;">
+                                        <select name="captcha_driver">
+                                            <option value="image" {{ ($configs['captcha_driver'] ?? 'image') === 'image' ? 'selected' : '' }}>图片字符验证码</option>
+                                            <option value="math" {{ ($configs['captcha_driver'] ?? 'image') === 'math' ? 'selected' : '' }}>算术计算验证码</option>
+                                            <option value="chinese" {{ ($configs['captcha_driver'] ?? 'image') === 'chinese' ? 'selected' : '' }}>中文汉字验证码</option>
+                                            <option value="click" {{ ($configs['captcha_driver'] ?? 'image') === 'click' ? 'selected' : '' }}>文字点选验证码</option>
+                                            <option value="slider" {{ ($configs['captcha_driver'] ?? 'image') === 'slider' ? 'selected' : '' }}>滑块拼图验证码</option>
+                                            <option value="rotate" {{ ($configs['captcha_driver'] ?? 'image') === 'rotate' ? 'selected' : '' }}>旋转验证码</option>
+                                            <option value="click_button" {{ ($configs['captcha_driver'] ?? 'image') === 'click_button' ? 'selected' : '' }}>点击按钮验证码</option>
+                                        </select></div>
+                                        <div class="layui-form-mid layui-word-aux">各模式效果可 <a href="/admin/cmspro/captcha/demo" target="_blank" style="color: #1e9fff;">点击预览体验</a>（打开「验证码」应用演示页）</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {{-- 邀请注册 Tab --}}
@@ -689,6 +741,11 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
         $('#wechat_oauth_url_row').toggle(data.elem.checked);
     });
 
+    // 验证码开关：动态显示/隐藏启用位置与模式选择
+    form.on('switch(captcha_enabled)', function(data) {
+        $('#captcha-extra-fields').toggle(data.elem.checked);
+    });
+
     // 快捷模式联动：按站点角色显示对应配置
     function toggleQuickModeFields(mode) {
         $('#quick-mode-server-item').toggle(mode === 'server');
@@ -727,7 +784,7 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     toggleSmsProviderFields($('#sms_provider').val());
 
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
-    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'alipay_enabled', 'douyin_enabled', 'weibo_enabled', 'github_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled'];
+    var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'alipay_enabled', 'douyin_enabled', 'weibo_enabled', 'github_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled', 'captcha_enabled'];
 
     $('#save-settings').on('click', function() {
         var formData = {};
@@ -744,6 +801,12 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
             var checked = $('input[name="' + field + '"]').is(':checked');
             formData[field] = checked ? '1' : '0';
         });
+
+        // 收集验证码启用位置多选（逗号分隔存储）
+        var captchaScenes = [];
+        if ($('input[name="captcha_scene_login"]').is(':checked')) captchaScenes.push('login');
+        if ($('input[name="captcha_scene_register"]').is(':checked')) captchaScenes.push('register');
+        formData.captcha_scenes = captchaScenes.join(',');
 
         var loadIdx = layer.load(2);
         $.ajax({

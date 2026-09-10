@@ -41,11 +41,19 @@ class SettingController extends Controller
         // Onlinepay（在线支付）安装/启用状态：邀请码"在线购买"模式的前置依赖
         $onlinepay = AppModel::where('app_id', 'onlinepay')->first();
 
+        // Captcha（验证码）安装/启用状态：验证码开关的前置依赖
+        $captcha = AppModel::where('app_id', 'cmspro.captcha')->first();
+        $captchaScenes = array_filter(array_map('trim', explode(',', (string) ($configs['captcha_scenes'] ?? ''))));
+
         return view('cmspro.sso::Admin.settings.index', [
             'configs'             => $configs,
             'relay_callback_url'  => \App\Apps\CmsproSso\Services\ShareService::frontUrl('/auth/relay/callback'),
             'onlinepay_installed' => $onlinepay !== null,
             'onlinepay_enabled'   => $onlinepay !== null && $onlinepay->status === AppStatus::ENABLED,
+            'captcha_installed'   => $captcha !== null,
+            'captcha_enabled_app' => $captcha !== null && $captcha->status === AppStatus::ENABLED,
+            'captcha_scene_login' => in_array('login', $captchaScenes, true),
+            'captcha_scene_register' => in_array('register', $captchaScenes, true),
         ]);
     }
 
@@ -93,6 +101,27 @@ class SettingController extends Controller
         $accessMode = (string) ($data['access_mode'] ?? '');
         if ($accessMode !== '' && !in_array($accessMode, ['path', 'domain'], true)) {
             return response()->json(['code' => 400, 'message' => '访问模式不合法'], 400);
+        }
+
+        // 验证码校验：开启时依赖验证码应用，且必须选择启用位置与有效模式
+        if (($data['captcha_enabled'] ?? '0') === '1') {
+            $captcha = AppModel::where('app_id', 'cmspro.captcha')->first();
+            if (!$captcha) {
+                return response()->json(['code' => 400, 'message' => '验证码功能依赖「验证码」应用，当前未安装，请先前往「应用管理」安装后再开启'], 400);
+            }
+            if ($captcha->status !== AppStatus::ENABLED) {
+                return response()->json(['code' => 400, 'message' => '「验证码」应用已安装但未启用，请先前往「应用管理」启用后再开启验证码功能'], 400);
+            }
+
+            $scenes = array_values(array_filter(array_map('trim', explode(',', (string) ($data['captcha_scenes'] ?? '')))));
+            if ($scenes === []) {
+                return response()->json(['code' => 400, 'message' => '开启验证码必须至少选择一个启用位置（登录/注册）'], 400);
+            }
+
+            $driver = (string) ($data['captcha_driver'] ?? '');
+            if ($driver !== '' && !in_array($driver, SettingService::CAPTCHA_DRIVERS, true)) {
+                return response()->json(['code' => 400, 'message' => '验证码模式不合法'], 400);
+            }
         }
 
         // 子域名模式必须填写绑定域名

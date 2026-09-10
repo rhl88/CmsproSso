@@ -2,8 +2,10 @@
 
 namespace App\Apps\CmsproSso\Services;
 
+use App\Enums\AppStatus;
 use App\Enums\Status;
 use App\Models\AdminMenu;
+use App\Models\AppModel;
 use App\Models\ConfigItem;
 
 /**
@@ -34,6 +36,7 @@ class SettingService
         'login_title', 'allow_register', 'default_redirect',
         'username_banned_words',
         'override_system',
+        'captcha_enabled', 'captcha_scenes', 'captcha_driver',
         'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
         'phone_login_enabled', 'sms_provider',
         'email_login_enabled',
@@ -248,5 +251,70 @@ class SettingService
     {
         $provider = $this->get('sms_provider', 'aliyun');
         return in_array($provider, self::SMS_PROVIDERS, true) ? $provider : 'aliyun';
+    }
+
+    // ================================================================ 验证码（依赖 CmsproCaptcha 应用）
+
+    /**
+     * 验证码应用 ID
+     */
+    public const CAPTCHA_APP_ID = 'cmspro.captcha';
+
+    /**
+     * 验证码可用的模式（与 CmsproCaptcha 的 DRIVER_MAP 保持一致）
+     */
+    public const CAPTCHA_DRIVERS = ['image', 'math', 'chinese', 'click', 'slider', 'rotate', 'click_button'];
+
+    /**
+     * 验证码可用的启用位置（登录 / 注册）
+     */
+    public const CAPTCHA_SCENES = ['login', 'register'];
+
+    /**
+     * 验证码应用是否已安装并启用
+     */
+    public function isCaptchaAppReady(): bool
+    {
+        $app = AppModel::where('app_id', self::CAPTCHA_APP_ID)->first();
+
+        return $app !== null && $app->status === AppStatus::ENABLED;
+    }
+
+    /**
+     * 判断是否启用验证码（后台开关开启 + 验证码应用已安装并启用）
+     */
+    public function isCaptchaEnabled(): bool
+    {
+        return $this->get('captcha_enabled', '0') === '1' && $this->isCaptchaAppReady();
+    }
+
+    /**
+     * 获取验证码启用位置（与可用位置取交集，过滤无效值）
+     *
+     * @return array<string> 如 ['login', 'register']
+     */
+    public function getCaptchaScenes(): array
+    {
+        $raw = str_replace(['，', ' '], [',', ''], $this->get('captcha_scenes', ''));
+        $scenes = array_filter(explode(',', $raw), fn ($scene) => $scene !== '');
+
+        return array_values(array_intersect(self::CAPTCHA_SCENES, $scenes));
+    }
+
+    /**
+     * 判断指定位置是否启用验证码
+     */
+    public function isCaptchaSceneEnabled(string $scene): bool
+    {
+        return $this->isCaptchaEnabled() && in_array($scene, $this->getCaptchaScenes(), true);
+    }
+
+    /**
+     * 获取验证码模式（非法值回退为 image）
+     */
+    public function getCaptchaDriver(): string
+    {
+        $driver = $this->get('captcha_driver', 'image');
+        return in_array($driver, self::CAPTCHA_DRIVERS, true) ? $driver : 'image';
     }
 }

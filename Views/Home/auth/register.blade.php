@@ -50,6 +50,12 @@
             <input type="password" name="password_confirmation" placeholder="确认密码"
                    autocomplete="new-password" class="layui-input" lay-verify="required">
         </div>
+        @if(!empty($captcha_enabled))
+        {{-- 人机验证码：由「验证码」应用提供能力，key/answer 随注册表单提交 --}}
+        <div class="layui-form-item">
+            <div id="captcha-box"></div>
+        </div>
+        @endif
         @if(!empty($invite['enabled']))
         <div class="layui-form-item">
             <input type="text" name="invite_code" placeholder="邀请码"
@@ -86,6 +92,9 @@
 @endsection
 
 @section('script')
+@if(!empty($captcha_enabled))
+<script src="{{ asset('apps/cmspro.sso/js/captcha-widget.js') }}?v={{ filemtime(public_path('apps/cmspro.sso/js/captcha-widget.js')) }}"></script>
+@endif
 <script>
 layui.use(['form', 'jquery', 'layer'], function(){
     var form = layui.form;
@@ -97,6 +106,15 @@ layui.use(['form', 'jquery', 'layer'], function(){
     });
 
     var redirect = @json($redirect);
+
+    // 人机验证码组件（后台开启注册验证码时渲染）
+    @if(!empty($captcha_enabled))
+    var captchaWidget = new CaptchaWidget({
+        el: '#captcha-box',
+        driver: @json($captcha_driver),
+        baseUrl: '/api/captcha'
+    });
+    @endif
 
     // 回车提交注册表单
     $('form[lay-filter="register-form"]').on('keydown', function(e){
@@ -168,11 +186,21 @@ layui.use(['form', 'jquery', 'layer'], function(){
     }
 
     form.on('submit(register-submit)', function(data){
+        var payload = $.extend({}, data.field, { redirect: redirect });
+        @if(!empty($captcha_enabled))
+        // 未完成人机验证时禁止提交
+        if (!captchaWidget.isAnswerReady()) {
+            layer.msg('请先完成验证码验证', {icon: 2});
+            return false;
+        }
+        payload.captcha_key = captchaWidget.getKey();
+        payload.captcha_answer = captchaWidget.getAnswer();
+        @endif
         var loadIdx = layer.load(2);
         $.ajax({
             url: window.SSO_API_BASE + '/auth/register',
             type: 'POST',
-            data: $.extend({}, data.field, { redirect: redirect }),
+            data: payload,
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -181,11 +209,17 @@ layui.use(['form', 'jquery', 'layer'], function(){
                     });
                 } else {
                     layer.msg(extractError(res), {icon: 2});
+                    @if(!empty($captcha_enabled))
+                    captchaWidget.refresh();
+                    @endif
                 }
             },
             error: function(xhr){
                 layer.close(loadIdx);
                 layer.msg(extractError(xhr.responseJSON), {icon: 2});
+                @if(!empty($captcha_enabled))
+                captchaWidget.refresh();
+                @endif
             }
         });
         return false;

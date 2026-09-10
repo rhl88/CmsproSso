@@ -2,6 +2,7 @@
 
 namespace App\Apps\CmsproSso\Controllers\HomeApi;
 
+use App\Apps\CmsproCaptcha\CaptchaService;
 use App\Apps\CmsproSso\Models\InviteCode;
 use App\Apps\CmsproSso\Models\LoginLog;
 use App\Apps\CmsproSso\Services\SettingService;
@@ -82,6 +83,32 @@ class AuthController extends Controller
     }
 
     /**
+     * 人机验证码校验：后台开启指定位置（login/register）的验证码时强制校验
+     *
+     * 依赖「验证码」应用（cmspro.captcha），key + answer 随表单提交，
+     * 校验通过由 CaptchaService 一次性消费（防重放）。失败返回 422 响应，未启用或通过返回 null。
+     */
+    protected function verifyCaptcha(Request $request, string $scene): ?JsonResponse
+    {
+        if (! $this->settingService->isCaptchaSceneEnabled($scene)) {
+            return null;
+        }
+
+        $key = trim((string) $request->input('captcha_key', ''));
+        $answer = $request->input('captcha_answer');
+
+        if ($key === '' || $answer === null || (is_string($answer) && trim($answer) === '')) {
+            return response()->json(['code' => 422, 'message' => '请先完成验证码验证'], 422);
+        }
+
+        if (! (new CaptchaService())->verify($key, $answer)) {
+            return response()->json(['code' => 422, 'message' => '验证码错误或已过期，请重新验证'], 422);
+        }
+
+        return null;
+    }
+
+    /**
      * 会话键：登录跳转地址（授权前暂存，回调后取回继续透传），按平台区分
      */
     protected function sessionRedirectKey(string $platform): string
@@ -104,6 +131,11 @@ class AuthController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
+        // 人机验证码校验（后台开启登录验证码时强制）：先于人机锁定检查，避免绕过
+        if ($captchaResponse = $this->verifyCaptcha($request, 'login')) {
+            return $captchaResponse;
+        }
+
         $validated = $request->validate([
             'account'  => 'required|string',
             'password' => 'required|string|min:6',
@@ -169,6 +201,11 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
+        // 人机验证码校验（后台开启注册验证码时强制）
+        if ($captchaResponse = $this->verifyCaptcha($request, 'register')) {
+            return $captchaResponse;
+        }
+
         $requireEmailCode = mail_configured();
         $inviteRequired = $this->settingService->get('invite_enabled', '0') === '1';
 

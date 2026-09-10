@@ -96,6 +96,51 @@ class SsoRegisterBannedWordsTest extends TestCase
         $this->assertDatabaseHas('users', ['username' => 'gooduser01']);
     }
 
+    public function test_昵称包含屏蔽词时拒绝注册(): void
+    {
+        $this->setConfig('username_banned_words', 'admin,管理员');
+
+        $this->postJson('/api/cmspro/sso/auth/register', [
+            'username' => 'gooduser02',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'nickname' => '超级管理员',
+        ])->assertStatus(422)
+            ->assertJsonPath('message', '昵称包含被屏蔽的词语，请更换昵称');
+
+        $this->assertDatabaseMissing('users', ['username' => 'gooduser02']);
+    }
+
+    public function test_昵称不包含屏蔽词时正常注册(): void
+    {
+        $this->setConfig('username_banned_words', 'admin,管理员');
+
+        $this->postJson('/api/cmspro/sso/auth/register', [
+            'username' => 'gooduser03',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'nickname' => '隔壁老王',
+        ])->assertOk()
+            ->assertJsonPath('code', 0);
+
+        $this->assertDatabaseHas('users', ['username' => 'gooduser03', 'nickname' => '隔壁老王']);
+    }
+
+    public function test_用户名与昵称同时命中时优先提示用户名(): void
+    {
+        $this->setConfig('username_banned_words', 'admin');
+
+        $this->postJson('/api/cmspro/sso/auth/register', [
+            'username' => 'bad_admin',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'nickname' => '管理员甲',
+        ])->assertStatus(422)
+            ->assertJsonPath('message', '用户名包含被屏蔽的词语，请更换用户名');
+
+        $this->assertDatabaseMissing('users', ['username' => 'bad_admin']);
+    }
+
     public function test_未配置屏蔽词时注册不受影响(): void
     {
         $this->postJson('/api/cmspro/sso/auth/register', [

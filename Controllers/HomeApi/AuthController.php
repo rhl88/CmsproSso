@@ -195,9 +195,14 @@ class AuthController extends Controller
             'invite_code.required' => '请输入邀请码',
         ]);
 
-        // 注册用户名屏蔽词校验：命中后台配置的违禁词则拒绝注册
-        if ($this->settingService->isUsernameBanned($validated['username'])) {
-            return response()->json(['code' => 422, 'message' => '用户名包含被屏蔽的词语，请更换用户名'], 422);
+        // 注册用户名/昵称屏蔽词校验：命中后台配置的违禁词则拒绝注册（昵称未填写时由用户名兜底，无需重复校验）
+        $usernameBanned = $this->settingService->isUsernameBanned($validated['username']);
+        $nicknameBanned = ($validated['nickname'] ?? '') !== ''
+            && $this->settingService->isUsernameBanned($validated['nickname']);
+        if ($usernameBanned || $nicknameBanned) {
+            $message = $usernameBanned ? '用户名包含被屏蔽的词语，请更换用户名' : '昵称包含被屏蔽的词语，请更换昵称';
+
+            return response()->json(['code' => 422, 'message' => $message], 422);
         }
 
         // 校验注册邮箱验证码：不正确或未输入不予注册（后台未配置邮箱时跳过）

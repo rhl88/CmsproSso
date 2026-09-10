@@ -163,6 +163,21 @@ layui.use(['form', 'jquery', 'layer'], function(){
     }
     @endif
 
+    // 从统一响应结构提取用户可读的错误信息（40201 校验错误时 data 为字段错误映射）
+    function extractError(res) {
+        if (res && res.data && typeof res.data === 'object') {
+            for (var key in res.data) {
+                if (Array.isArray(res.data[key]) && res.data[key].length) {
+                    return res.data[key][0];
+                }
+                if (typeof res.data[key] === 'string' && res.data[key]) {
+                    return res.data[key];
+                }
+            }
+        }
+        return (res && res.message) ? res.message : '请求失败';
+    }
+
     // 提交登录请求；开启验证码时任何失败后延迟重弹验证层（验证码一次性消费，需重新验证）
     function doLogin(payload) {
         var loadIdx = layer.load(2);
@@ -177,7 +192,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
                         window.location.href = res.data.redirect || '/';
                     });
                 } else {
-                    layer.msg(res.message || '登录失败', {icon: 2});
+                    layer.msg(extractError(res), {icon: 2});
                     @if($configs['captcha_enabled'] === '1')
                     setTimeout(function(){ openCaptchaVerify(payload); }, 600);
                     @endif
@@ -185,12 +200,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
             },
             error: function(xhr){
                 layer.close(loadIdx);
-                var msg = '请求失败';
-                try {
-                    var res = JSON.parse(xhr.responseText);
-                    if (res.message) msg = res.message;
-                } catch(e) {}
-                layer.msg(msg, {icon: 2});
+                layer.msg(extractError(xhr.responseJSON), {icon: 2});
                 @if($configs['captcha_enabled'] === '1')
                 setTimeout(function(){ openCaptchaVerify(payload); }, 600);
                 @endif

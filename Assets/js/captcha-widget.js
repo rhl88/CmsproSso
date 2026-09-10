@@ -55,6 +55,10 @@
         + 'background:linear-gradient(135deg,#2563eb,#3b82f6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;}'
         + '.cw-slider-thumb:active{cursor:grabbing;}'
         + '.cw-rotate-wrap{text-align:center;}'
+        + '.cw-rotate-row{display:flex;align-items:center;justify-content:center;gap:10px;}'
+        + '.cw-rotate-btn{flex:0 0 auto;width:36px;height:36px;border:1px solid #e2e8f0;border-radius:50%;background:#f8fafc;'
+        + 'color:#2563eb;font-size:18px;line-height:1;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}'
+        + '.cw-rotate-btn:active{background:#dbeafe;}'
         + '.cw-rotate-img{width:160px;height:160px;border-radius:8px;border:1px solid #e2e8f0;cursor:grab;user-select:none;touch-action:none;}'
         + '.cw-rotate-hint{margin-top:10px;color:#475569;font-size:12px;}'
         + '.cw-btn-wrap{text-align:center;padding:14px 0 6px;}'
@@ -339,8 +343,12 @@
         renderRotateCaptcha: function (data) {
             var self = this;
             this.container.innerHTML = '<div class="cw-box cw-rotate-wrap">'
-                + '<div style="margin-bottom:8px;color:#64748b;">' + this.esc(data.hint || '拖动图片转正') + '</div>'
+                + '<div style="margin-bottom:8px;color:#64748b;">' + this.esc(data.hint || '旋转图片使十字箭头朝上') + '</div>'
+                + '<div class="cw-rotate-row">'
+                + '<button type="button" class="cw-rotate-btn" data-step="-5" title="向左旋转">&#8634;</button>'
                 + '<img class="cw-rotate-img" src="' + data.image + '" alt="旋转验证" style="width:' + (data.size || 160) + 'px;height:' + (data.size || 160) + 'px;">'
+                + '<button type="button" class="cw-rotate-btn" data-step="5" title="向右旋转">&#8635;</button>'
+                + '</div>'
                 + '<div class="cw-rotate-hint">当前角度：<span class="cw-value">0</span>&deg;</div>'
                 + '</div>';
 
@@ -348,14 +356,55 @@
             var valueEl = this.container.querySelector('.cw-value');
             var rotation = 0;
 
+            // 应用旋转增量并同步答案（CSS rotate 正值=顺时针）
+            function apply(delta) {
+                rotation += delta;
+                img.style.transform = 'rotate(' + rotation + 'deg)';
+                valueEl.textContent = Math.round(((rotation % 360) + 360) % 360);
+                self.answer = Math.round(rotation);
+            }
+
+            // 左右按钮：单击微调 ±5°，按住 400ms 后连续旋转（缓慢调整）
+            this.container.querySelectorAll('.cw-rotate-btn').forEach(function (btn) {
+                var step = Number(btn.getAttribute('data-step')) || 0;
+                var delayTimer = null;
+                var repeatTimer = null;
+
+                function stopRepeat() {
+                    if (delayTimer) {
+                        clearTimeout(delayTimer);
+                        delayTimer = null;
+                    }
+                    if (repeatTimer) {
+                        clearInterval(repeatTimer);
+                        repeatTimer = null;
+                    }
+                }
+
+                function startHold(e) {
+                    e.preventDefault();
+                    apply(step);
+                    stopRepeat();
+                    delayTimer = setTimeout(function () {
+                        repeatTimer = setInterval(function () {
+                            apply(step);
+                        }, 120);
+                    }, 400);
+                }
+
+                btn.addEventListener('mousedown', startHold);
+                btn.addEventListener('touchstart', startHold);
+                ['mouseup', 'mouseleave', 'touchend', 'touchcancel'].forEach(function (ev) {
+                    btn.addEventListener(ev, stopRepeat);
+                });
+            });
+
+            // 图片上下拖动同样可旋转
             this.bindDrag(img, {
                 vertical: true,
                 onStart: function () {},
                 onMove: function (delta) {
-                    rotation += delta * 1.5;
-                    img.style.transform = 'rotate(' + rotation + 'deg)';
-                    valueEl.textContent = Math.round(((rotation % 360) + 360) % 360);
-                    self.answer = Math.round(rotation);
+                    apply(delta * 1.5);
                     return rotation;
                 },
                 onEnd: function () {}

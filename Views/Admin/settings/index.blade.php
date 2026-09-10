@@ -148,6 +148,13 @@
                                 </div>
                             </div>
                             <div class="layui-form-item">
+                                <label class="layui-form-label">用户名屏蔽词</label>
+                                <div class="layui-input-block">
+                                    <textarea name="username_banned_words" class="layui-textarea" placeholder="如：admin,root,管理员">{{ $configs['username_banned_words'] ?? '' }}</textarea>
+                                    <div class="layui-form-mid layui-word-aux">注册用户名包含任一屏蔽词将被拒绝，多个词用逗号、分号或换行分隔，不区分大小写</div>
+                                </div>
+                            </div>
+                            <div class="layui-form-item">
                                 <label class="layui-form-label">默认跳转地址</label>
                                 <div class="layui-input-block">
                                     <input type="text" name="default_redirect" value="{{ $configs['default_redirect'] ?? '/' }}"

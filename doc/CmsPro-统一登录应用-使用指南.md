@@ -1,7 +1,7 @@
 # 统一登录 · 使用指南
 
-> 版本：1.6.0 | 更新日期：2026-09-06
-> 应用版本：2.0.22 | 应用 ID：`cmspro.sso`
+> 版本：1.7.0 | 更新日期：2026-09-10
+> 应用版本：2.2.0 | 应用 ID：`cmspro.sso`
 
 > 本指南帮助开发者快速安装、运行和验证统一登录应用。
 
@@ -72,6 +72,8 @@
 - 找回密码页 `/sso/forgot-password` 两步流程可用：输入邮箱发送验证码 → 凭验证码重置密码后跳转登录页（复用系统 `/api/user/password/*` 接口）
 
 - 注册时邮箱验证码必填，验证码错误或过期拒绝注册，注册成功后验证码一次性失效（复用系统 `/api/user/register/email-code` 接口）
+
+- 用户名屏蔽词生效：后台「访问设置 → 用户名屏蔽词」配置违禁词（英文/中文逗号、分号、换行分隔）后，注册用户名包含任一屏蔽词（不区分大小写）返回 422「用户名包含被屏蔽的词语，请更换用户名」；未配置时不校验
 
 - 微信登录入口显示（开启「启用微信登录」且已配置 AppID/AppSecret 时）
 
@@ -375,4 +377,5 @@ app/Apps/CmsproSso/
 | 2.0.21 | 2026-09-06 | 修复支付宝扫码登录回调报「支付宝用户授权失败，未获取到 openid」：支付宝网页授权（`openauth.alipay.com`）跳出时回传参数名为 `auth_code`（区别于微信/QQ/抖音/微博/GitHub 的 `code`），而 `oauthCallback` 仅读取 `code`，导致回调落入外挂分支、因无 openid 触发 400 被框架兜底渲染为 500；现支付宝平台兼容读取 `auth_code`（`code` 为空且平台为 alipay 时回退 `auth_code`），其余平台不受影响；新增 `SsoAlipayCallbackTest`（登录 URL state、auth_code 换取凭证登录老用户、换取失败、无凭证四例，应用全量 106 用例通过） | <br /> |
 | 2.0.22 | 2026-09-06 | 修复 PC 扫码绑定手机端停留登录页：`bindPcOauthCallback` 原跳转受保护 `/home`，手机端无登录态被 `cmspro.sso.auth` 中间件重定向 `/login?redirect=...`；改为跳转公开提示页 `pc-success?result=bind_success`（成功）/`result=bind_failed`（绑定目标不存在/冲突），手机端无需登录态即可展示结果并自动关闭，PC 端仍经 `bind-status` 轮询取结果；`pc-success` 新增绑定成功/失败语义分支（绑定失败不自动关闭，与登录失败一致）；`SsoPcBindTest` 适配跳转断言并新增提示页文案用例（18 用例通过） | <br /> |
 | 2.1.0  | 2026-09-08 | 前台登录页「其他登录方式」改版为圆形品牌图标按钮：微信/QQ/手机/邮箱/支付宝/抖音/微博/GitHub 八类入口统一使用 `sso-oauth-icon-btn` 图标按钮样式（内嵌真实品牌 PNG 图标，图标资源位于应用 `Assets/icon/` 目录，发布至 `public/apps/cmspro.sso/icon/`），hover 缩放 + 阴影交互；移除旧文字徽标样式（`sso-social-btn`/`sso-social-icon`/`sso-social-badge` 系列与 base64 SVG 品牌图标），入口显示仍受后台对应平台启停开关控制 | <br /> |
+| 2.2.0  | 2026-09-10 | 新增注册用户名屏蔽词：后台「访问设置」Tab 在「允许注册」下方新增「用户名屏蔽词」textarea（`username_banned_words` 配置项，加入保存白名单与 manifest 声明），注册接口 `register()` 在字段验证后校验用户名——包含任一屏蔽词（不区分大小写）即拒绝注册（422 提示「用户名包含被屏蔽的词语，请更换用户名」），屏蔽词支持英文/中文逗号、分号、换行分隔（`SettingService::getBannedWords()` 解析、`isUsernameBanned()` 判定）；社交/手机/邮箱自动建号用户名不受影响；新增 `SsoRegisterBannedWordsTest` 8 用例（应用全量 115 用例通过） | <br /> |
 

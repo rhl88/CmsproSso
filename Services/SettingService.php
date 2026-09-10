@@ -32,6 +32,7 @@ class SettingService
         'weibo_enabled', 'weibo_app_key', 'weibo_app_secret',
         'github_enabled', 'github_client_id', 'github_client_secret',
         'login_title', 'allow_register', 'default_redirect',
+        'username_banned_words',
         'override_system',
         'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
         'phone_login_enabled', 'sms_provider',
@@ -183,6 +184,40 @@ class SettingService
     {
         $redirect = trim($this->get('default_redirect', '/'));
         return $redirect !== '' ? $redirect : '/';
+    }
+
+    /**
+     * 解析注册用户名屏蔽词列表
+     *
+     * 支持英文/中文逗号、分号、换行分隔，忽略空白项，统一转小写便于大小写不敏感匹配。
+     */
+    public function getBannedWords(): array
+    {
+        $raw = str_replace(["\r\n", "\r"], "\n", $this->get('username_banned_words', ''));
+        $words = preg_split('/[,，;；\n]/u', $raw) ?: [];
+        $words = array_filter(array_map('trim', $words), fn ($word) => $word !== '');
+
+        return array_map('mb_strtolower', array_values($words));
+    }
+
+    /**
+     * 判断用户名是否命中屏蔽词（包含即命中，不区分大小写）
+     */
+    public function isUsernameBanned(string $username): bool
+    {
+        $bannedWords = $this->getBannedWords();
+        if ($bannedWords === []) {
+            return false;
+        }
+
+        $username = mb_strtolower($username);
+        foreach ($bannedWords as $word) {
+            if (str_contains($username, $word)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -48,6 +48,8 @@ return [
     // 登录设置
     'login_title' => '统一登录',
     'allow_register' => '1',
+    // 注册用户名屏蔽词（英文/中文逗号、分号、换行分隔，命中即拒绝注册）
+    'username_banned_words' => '',
     'default_redirect' => '/',
 
     // 覆盖系统登录

@@ -1,7 +1,7 @@
 # 统一登录 · 特性清单
 
-> 版本：1.4.0 | 更新日期：2026-09-06
-> 应用版本：2.0.21 | 应用 ID：`cmspro.sso`
+> 版本：1.5.0 | 更新日期：2026-09-10
+> 应用版本：2.2.0 | 应用 ID：`cmspro.sso`
 
 > 本文档系统整理 CmsPro v5 应用开发框架的全部应用特性，并标注本应用中的对应实现位置，作为应用开发的官方参考。
 
@@ -68,6 +68,7 @@
 | 24 | 配置读取服务 | `SettingService::get()` 从 `config_items` 读取，回退默认值                                                                                     | `Services/SettingService.php`             |
 | 25 | 配置白名单  | `ALLOWED_KEYS` 白名单，防止篡改其他配置                                                                                                           | `Services/SettingService.php`             |
 | 26 | 配置保存   | `SettingController::update()` 白名单接收 + 清缓存                                                                                             | `Controllers/Admin/SettingController.php` |
+| 27 | 用户名屏蔽词 | 后台「访问设置 → 用户名屏蔽词」（`username_banned_words`，支持英文/中文逗号、分号、换行分隔），注册用户名包含任一屏蔽词（不区分大小写）拒绝注册（422）；`getBannedWords()` 解析、`isUsernameBanned()` 判定 | `Services/SettingService.php` / `Controllers/HomeApi/AuthController.php::register()` / `Views/Admin/settings/index.blade.php` |
 
 ## 六-1、短信服务
 
@@ -169,4 +170,5 @@
 | 2.0.9 | 2026-09-04 | 服务端重构为纯跳板透传（不建号、不绑定、不落任何用户数据）：authorize 已登录不再静默签发授权码、始终代跳社交平台授权页；社交回调 `relayPassthroughCallback`/`relayQrPassthroughCallback` 暂存社交授权数据（Cache + data_token）签发 user_id 为 null 的授权码；token 签发令牌携带 data_token、不再关联服务端用户；userinfo 凭 data_token 透传社交平台真实 openid/unionid/昵称/头像/令牌及 raw_data（平台无关，未来新增第三方登录接入社交回调即自动支持透传）；客户端 relayCallback/relayLoginStatus 改以社交真实 openid 为身份锚点建号（去掉 sso+服务端用户id 前缀逻辑）；迁移 auth_codes/access_tokens 表 user_id 改 nullable、access_tokens 新增 data_token 字段；测试重构 `SsoOAuthRelayTest`（20 用例）与 `SsoRelayQrcodeTest`（17 用例）、`SsoRelayCompleteTest` fakeServer 适配透传结构，全量 74 用例通过 |
 | 2.0.19 | 2026-09-06 | 社交新用户分流治理（独立站平台）：微信/QQ/支付宝/抖音/微博/GitHub OAuth 回调发现新用户不再自动建号，授权数据暂存 Cache 后跳分流页（完善资料/账号绑定双 Tab，未登录凭 token 操作）；PC 扫码轮询新增 `need_setup` 状态（PC 端跳分流页，`pc-success?result=setup` 提示页）；分流页提交路由参数化（`/auth/{platform}/complete` 与 `/auth/{platform}/bind-existing`，替代原 wechat/qq 静态 complete 路由，四平台补齐）；bind-existing 语义修正——由「已登录用户转移绑定」改为「凭 token + 账号密码绑定既有账号并切换登录态」（与 relay 模式 bind 一致，失败锁定策略同步）；抽取 `createAccountFromToken`/`bindTokenToAccount`/`verifyBindCredentials`/`bindOauthToUser` 公共方法与 relay setup/bind 复用；改写 `SsoBindExistingTest`、新增 `SsoSocialNewUserFlowTest`（应用全量 101 用例通过） |
 | 2.0.22 | 2026-09-06 | 修复 PC 扫码绑定手机端停留登录页：`bindPcOauthCallback` 原跳转受保护 `/home`，手机端无登录态被 `cmspro.sso.auth` 中间件重定向 `/login?redirect=...`；改为跳转公开提示页 `pc-success?result=bind_success`（成功）/`result=bind_failed`（绑定目标不存在/冲突），手机端无需登录态即可展示结果并自动关闭，PC 端仍经 `bind-status` 轮询取结果；`pc-success` 新增绑定成功/失败语义分支（绑定失败不自动关闭，与登录失败一致）；`SsoPcBindTest` 适配跳转断言并新增提示页文案用例（18 用例通过） |
+| 2.2.0 | 2026-09-10 | 新增注册用户名屏蔽词：后台「访问设置」新增「用户名屏蔽词」配置（`username_banned_words`，manifest 声明 + 保存白名单），注册接口在字段验证后校验用户名包含任一屏蔽词（不区分大小写）即拒绝注册（422），屏蔽词支持英文/中文逗号、分号、换行分隔；社交/手机/邮箱自动建号用户名不受影响；新增 `SsoRegisterBannedWordsTest` 8 用例（应用全量 115 用例通过） |
 

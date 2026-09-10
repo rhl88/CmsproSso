@@ -2,7 +2,7 @@
     "id": "cmspro.sso",
     "name": "统一登录",
     "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信、QQ等社交化登录（当前实现微信登录与QQ互联登录）。支持子域名绑定与目录访问；快捷模式支持站点间社交登录中转——服务端作为纯跳板仅做授权中转，不建号、不绑定、不保存任何用户数据，将社交平台真实 openid 等授权数据透传给客户端，客户端以社交真实身份为锚点本地建号登录。",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "icon": "fa fa-sign-in",
     "author": "CmsPro",
     "require": {
@@ -237,6 +237,13 @@
                     "type": "switch",
                     "value": "1",
                     "tips": "开启后前台显示注册入口"
+                },
+                {
+                    "name": "username_banned_words",
+                    "title": "用户名屏蔽词",
+                    "type": "textarea",
+                    "value": "",
+                    "tips": "注册用户名包含任一屏蔽词将被拒绝，多个词用逗号、分号或换行分隔"
                 },
                 {
                     "name": "override_system",

@@ -329,6 +329,9 @@
             var maxLeft = w - 44;
 
             this.bindDrag(track, {
+                getBase: function () {
+                    return parseFloat(thumb.style.left) || 0;
+                },
                 onStart: function () {
                     hint.textContent = '按住滑块拖动完成拼图';
                 },
@@ -362,12 +365,12 @@
             var valueEl = this.container.querySelector('.cw-value');
             var rotation = 0;
 
-            // 应用旋转增量并同步答案（CSS rotate 正值=顺时针）
-            function apply(delta) {
-                rotation += delta;
+            // 设置绝对旋转角度并同步答案（CSS rotate 正值=顺时针）
+            function setRotation(angle) {
+                rotation = angle;
                 img.style.transform = 'rotate(' + rotation + 'deg)';
                 valueEl.textContent = Math.round(((rotation % 360) + 360) % 360);
-                self.answer = Math.round(rotation);
+                self.answer = Math.round(((rotation % 360) + 360) % 360);
             }
 
             // 左右按钮：单击微调 ±5°，按住 400ms 后连续旋转（缓慢调整）
@@ -389,11 +392,11 @@
 
                 function startHold(e) {
                     e.preventDefault();
-                    apply(step);
+                    setRotation(rotation + step);
                     stopRepeat();
                     delayTimer = setTimeout(function () {
                         repeatTimer = setInterval(function () {
-                            apply(step);
+                            setRotation(rotation + step);
                         }, 120);
                     }, 400);
                 }
@@ -405,13 +408,15 @@
                 });
             });
 
-            // 图片上下拖动同样可旋转
+            // 图片上下拖动同样可旋转（基准角度 + 总位移）
             this.bindDrag(img, {
                 vertical: true,
-                onStart: function () {},
-                onMove: function (delta) {
-                    apply(delta * 1.5);
+                getBase: function () {
                     return rotation;
+                },
+                onStart: function () {},
+                onMove: function (delta, base) {
+                    setRotation(base + delta * 1.5);
                 },
                 onEnd: function () {}
             });
@@ -440,12 +445,13 @@
 
         /**
          * 绑定拖动（鼠标 + 触摸）
-         * handlers: { vertical: bool, onStart, onMove(totalDelta), onEnd }
-         * onMove 收到自拖动开始起的总位移；起始基准由调用方在 onStart 中记录
+         * handlers: { vertical: bool, getBase, onStart, onMove(totalDelta, basePos), onEnd }
+         * onMove 收到自拖动开始起的总位移与按下时捕获的基准值（getBase）
          */
         bindDrag: function (el, handlers) {
             var dragging = false;
             var startPos = 0;
+            var basePos = 0;
 
             function posFromEvent(e) {
                 return handlers.vertical
@@ -457,7 +463,8 @@
                 if (!dragging) {
                     return;
                 }
-                handlers.onMove(posFromEvent(e) - startPos);
+                // 总位移 + 拖动起始基准（getBase 在按下时捕获，拖动过程中基准不变）
+                handlers.onMove(posFromEvent(e) - startPos, basePos);
                 if (e.cancelable) {
                     e.preventDefault();
                 }
@@ -481,6 +488,7 @@
                 }
                 dragging = true;
                 startPos = posFromEvent(e);
+                basePos = handlers.getBase ? handlers.getBase() : 0;
                 handlers.onStart();
                 document.addEventListener('mousemove', move);
                 document.addEventListener('mouseup', end);

@@ -66,7 +66,7 @@ class AuthController extends Controller
 
         return view('cmspro.sso::Home.auth.login', [
             'configs' => $configs,
-            'redirect' => (string) $request->input('redirect', ''),
+            'redirect' => $this->normalizeRedirect((string) $request->input('redirect', '')),
         ]);
     }
 
@@ -87,7 +87,7 @@ class AuthController extends Controller
 
         return view('cmspro.sso::Home.auth.register', [
             'login_title' => $this->settingService->get('login_title', '统一登录'),
-            'redirect'    => (string) $request->input('redirect', ''),
+            'redirect'    => $this->normalizeRedirect((string) $request->input('redirect', '')),
             'mailConfigured' => mail_configured(),
             'invite'      => $this->inviteViewData(),
             // 注册验证码：后台开启且验证码应用就绪、启用位置包含 register 时渲染
@@ -310,12 +310,62 @@ class AuthController extends Controller
      */
     protected function resolveRedirect(Request $request): string
     {
-        $redirect = trim((string) $request->input('redirect', ''));
-        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
+        $redirect = $this->normalizeRedirect((string) $request->input('redirect', ''));
+        if ($redirect !== '') {
             return $redirect;
         }
 
         return $this->settingService->getDefaultRedirect();
+    }
+
+    /**
+     * 规范化登录/注册跳转地址（覆盖系统托管场景）
+     *
+     * 开启「覆盖系统」后，托管系统登录/注册页被重定向到本应用时透传的 redirect 有两类，
+     * 登录/注册成功后需还原为托管系统的最终目标页：
+     * 1. 嵌套地址：中间件以完整 URL 透传（如 http://主域/user/login?redirect=/apps/xxx），
+     *    提取其内层 redirect 作为真实目标，避免登录后跳回托管登录页多绕一层；
+     * 2. 相对路径（如 /apps/xxx）：补全主站域名成绝对地址，避免子域名模式下
+     *    登录后相对跳转落到 SSO 子域名（sso.xxx/apps/xxx）404。
+     * 绝对地址仅保留同主域站内地址（防开放重定向），其余返回空串走默认跳转。
+     */
+    protected function normalizeRedirect(string $redirect): string
+    {
+        $redirect = trim($redirect);
+        if ($redirect === '') {
+            return '';
+        }
+
+        // 嵌套：地址指向托管系统登录/注册页时，取其内层 redirect 继续（parse_str 自动解码）
+        $parts = parse_url($redirect);
+        if (isset($parts['path'])) {
+            $path = '/' . ltrim((string) $parts['path'], '/');
+            if (in_array($path, ['/user/login', '/user/register'], true)) {
+                parse_str((string) ($parts['query'] ?? ''), $query);
+                return $this->normalizeRedirect((string) ($query['redirect'] ?? ''));
+            }
+        }
+
+        // 相对路径：补全主站域名（站内地址，无需再校验）
+        if (str_starts_with($redirect, '/') && !str_starts_with($redirect, '//')) {
+            return $this->mainSiteBase() . $redirect;
+        }
+
+        // 绝对地址：仅保留同主域站内地址
+        return $this->isSafeRedirect($redirect) ? $redirect : '';
+    }
+
+    /**
+     * 主站根地址（scheme + 主域名）
+     *
+     * host 取 config('app.url')，取不到时回退当前请求 host；scheme 随当前请求
+     */
+    protected function mainSiteBase(): string
+    {
+        $scheme = request()->isSecure() ? 'https' : 'http';
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST) ?: request()->getHost();
+
+        return $scheme . '://' . $host;
     }
 
     /**

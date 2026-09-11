@@ -89,9 +89,19 @@
 
 后台「访问设置 → 覆盖系统」开关开启后，系统默认登录页 `/user/login` 与注册页 `/user/register` 将被重定向到本应用统一登录/注册页，使系统各处硬编码的登录入口统一进入 SSO 流程。关闭开关后恢复系统默认登录/注册页。重定向目标随访问模式变化：路径前缀模式跳转到 `/sso/login`、`/sso/register`；子域名模式跳转到绑定域名（如 `http://sso.example.com/login`）。
 
+跳转地址二次处理（`Controllers/Home/AuthController.php` 的 `normalizeRedirect()`）：登录/注册页对透传的 `redirect` 规范化，使登录/注册成功后正确回到托管系统的最终目标页：
+
+- 嵌套地址：中间件以完整 URL 透传托管登录/注册页（如 `/login?redirect=http%3A%2F%2F主域%2Fuser%2Flogin%3Fredirect%3D%252Fapps%252Fxxx`），自动提取内层 `redirect` 作为真实目标，避免登录后跳回托管登录页多绕一层
+
+- 相对路径（如 `/apps/cmspro.domainmanager`）：补全主站域名成绝对地址（`http://www.cmspro.com/apps/cmspro.domainmanager`），避免子域名模式下登录后相对跳转落到 SSO 子域名 404
+
+- 绝对地址（如 `http://www.cmspro.com/apps/cmspro.domainmanager`）：同主域原样保留；外域丢弃，登录后走默认跳转（防开放重定向）
+
 验证要点：
 
 - 开启后访问 `/user/login` 返回 302 并跳转到本应用登录页（路径前缀模式为 `/sso/login`，子域名模式为 `http://sso.example.com/login`），携带 `redirect` 参数
+
+- 开启后访问 `/user/login?redirect=/apps/xxx` 时，登录页渲染的 redirect 应为主站绝对地址（嵌套/相对路径均规范化），登录成功后跳转该地址；访问 `/user/register` 同理
 
 - 开启后访问 `/user/register` 返回 302 并跳转到本应用注册页
 
@@ -386,4 +396,5 @@ app/Apps/CmsproSso/
 | 2.1.0  | 2026-09-08 | 前台登录页「其他登录方式」改版为圆形品牌图标按钮：微信/QQ/手机/邮箱/支付宝/抖音/微博/GitHub 八类入口统一使用 `sso-oauth-icon-btn` 图标按钮样式（内嵌真实品牌 PNG 图标，图标资源位于应用 `Assets/icon/` 目录，发布至 `public/apps/cmspro.sso/icon/`），hover 缩放 + 阴影交互；移除旧文字徽标样式（`sso-social-btn`/`sso-social-icon`/`sso-social-badge` 系列与 base64 SVG 品牌图标），入口显示仍受后台对应平台启停开关控制 | <br /> |
 | 2.2.0  | 2026-09-10 | 新增注册用户名/昵称屏蔽词：后台「访问设置」Tab 在「允许注册」下方新增「用户名屏蔽词」textarea（`username_banned_words` 配置项，加入保存白名单与 manifest 声明），注册接口 `register()` 在字段验证后校验用户名与昵称——包含任一屏蔽词（不区分大小写）即拒绝注册（422 提示「用户名/昵称包含被屏蔽的词语，请更换」），昵称未填写时由用户名兜底不重复校验，屏蔽词支持英文/中文逗号、分号、换行分隔（`SettingService::getBannedWords()` 解析、`isUsernameBanned()` 判定）；社交/手机/邮箱自动建号用户名不受影响；新增 `SsoRegisterBannedWordsTest` 11 用例（应用全量 118 用例通过） | <br /> |
 | 2.3.0  | 2026-09-10 | 新增人机验证码：后台「登录设置」在「登录成功默认跳转」下方新增「验证码开关」（`captcha_enabled`，开启时强依赖「验证码」应用 cmspro.captcha——未安装/未启用显示警示条并拦截保存 400）、「启用位置」多选（`captcha_scenes`：登录/注册，至少一项）与「验证码模式」选择（`captcha_driver`：图片字符/算术/中文/文字点选/滑块拼图/旋转/点击按钮，可点击 `/admin/cmspro/captcha/demo` 打开验证码应用演示页预览体验）；前台登录/注册页按启用场景渲染 `captcha-widget.js` 通用组件（7 种模式渲染与交互，提交携带 captcha\_key/captcha\_answer，未完成验证禁止提交，失败自动刷新），API 侧 `verifyCaptcha` 场景级强校验（未开启跳过，开启后未完成/答错 422，校验通过由验证码应用一次性消费防重放，先于账号锁定检查防绕过）；新增 `SsoCaptchaTest` 18 用例（应用全量 136 用例通过） | <br /> |
+| 2.6.2  | 2026-09-11 | 覆盖系统托管跳转地址二次处理：登录/注册页对透传的 redirect 规范化（`normalizeRedirect()`）——嵌套托管登录/注册页完整 URL（中间件 fullUrl 透传）自动提取内层 redirect 作为真实目标、相对路径补全主站域名成绝对地址（防子域名模式下登录后相对跳转落到 SSO 子域 404）、绝对地址同主域原样保留/外域丢弃走默认跳转；已登录直跳（`resolveRedirect()`）同步规范化；新增 `SsoRedirectNormalizeTest` 12 用例（应用全量 160 用例通过） | <br /> |
 

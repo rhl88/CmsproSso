@@ -40,6 +40,7 @@
 | 14   | 前台认证中间件     | 自定义 `cmspro.sso.auth` 中间件，未登录跳转统一登录页                                 | `Middleware/FrontAuthMiddleware.php`                      |
 | 15   | 路由命名        | 后台设置页命名 `admin.cmspro.sso.setting`                                   | `Routes/admin.php`                                        |
 | 16   | 覆盖系统登录中间件   | 开启「覆盖系统」后，`/user/login`、`/user/register` 重定向到本应用登录/注册页               | `Middleware/OverrideSystemAuthMiddleware.php`             |
+| 16.1 | 跳转地址二次处理    | 覆盖系统托管场景下登录/注册页对透传 redirect 规范化：嵌套托管登录/注册页 URL 提取内层 redirect、相对路径补全主站域名、绝对地址同主域保留/外域丢弃 | `Controllers/Home/AuthController.php`（`normalizeRedirect()`） |
 
 ## 四、数据层
 
@@ -181,4 +182,5 @@
 | 2.5.4 | 2026-09-10 | 修复滑块拼图验证码拖不动的 bug：`bindDrag` 的 `onMove` 此前只传总位移、不传拖动起始基准，滑块 `onMove` 中 `baseLeft` 为 undefined 导致 `left = NaNpx`（赋值被浏览器静默忽略，控制台无报错）——`bindDrag` 增加按下时捕获基准的 `getBase` 机制并作为第二参数传递；顺带修正旋转验证码拖动「总位移当增量累计导致越拖越快」的问题（改为基准角度 + 总位移的绝对角度模式，答案归一化 0-359） |
 | 2.6.0 | 2026-09-10 | 找回密码双通道（邮箱/手机）：找回密码页支持邮箱/手机 tab 切换（均开启时 tab、单开启直接表单、全关显示「系统未开启找回密码功能，请联系管理员」）；新增手机找回 API（发送验证码 + 凭验证码重置密码，独立缓存键一次性消费防重放）；`SsoForgotPasswordTest` 14 用例 |
 | 2.6.1 | 2026-09-10 | 登录页「找回密码」入口改名为「忘记密码」并默认显示（去除通道可用性显隐判断与 `forgot_available` 视图数据），通道可用性提示保留在找回密码页内；应用全量 148 用例 |
+| 2.6.2 | 2026-09-11 | 覆盖系统托管跳转地址二次处理：登录/注册页对透传的 redirect 规范化（`normalizeRedirect()`）——嵌套托管登录/注册页完整 URL 提取内层 redirect 作为真实目标、相对路径补全主站域名成绝对地址（防子域名模式下登录后相对跳转落到 SSO 子域 404）、绝对地址同主域原样保留/外域丢弃走默认跳转；已登录直跳同步规范化；新增 `SsoRedirectNormalizeTest` 12 用例（应用全量 160 用例通过） |
 

@@ -286,7 +286,8 @@ class AuthController extends Controller
             Cache::forget('user_register_code:' . $validated['email']);
         }
 
-        Auth::guard('web')->login($user);
+        $remember = $request->filled('remember');
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
 
         $this->writeLoginLog($user->id, 'password', $request, 1, '注册成功');
@@ -428,7 +429,8 @@ class AuthController extends Controller
             }
         }
 
-        Auth::guard('web')->login($user);
+        $remember = $request->filled('remember');
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -700,7 +702,8 @@ class AuthController extends Controller
             }
         }
 
-        Auth::guard('web')->login($user);
+        $remember = $request->filled('remember');
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -1213,6 +1216,9 @@ class AuthController extends Controller
             $request->session()->put($this->sessionStateKey($platform), $state);
             $request->session()->put($this->sessionRedirectKey($platform), trim((string) $request->input('redirect', '')));
         }
+
+        // 记住登录状态偏好：供回调建立登录态时从 session 取回
+        $request->session()->put('sso_remember', $request->filled('remember'));
 
         // 微信外挂模式：构建跳转到外挂脚本的 URL（QQ 无外挂模式）
         if ($platform === 'wechat' && $this->settingService->isWechatOauthProxyEnabled()) {
@@ -1912,7 +1918,8 @@ class AuthController extends Controller
             return response()->json(['code' => 400, 'message' => '用户不存在'], 400);
         }
 
-        Auth::guard('web')->login($user);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -2025,6 +2032,7 @@ class AuthController extends Controller
         $state = md5(uniqid((string) mt_rand(), true));
         $request->session()->put($this->sessionStateKey('relay'), $state);
         $request->session()->put($this->sessionRedirectKey('relay'), trim((string) $request->input('redirect', '')));
+        $request->session()->put('sso_remember', $request->filled('remember'));
 
         return response()->json([
             'code'    => 0,
@@ -2134,7 +2142,8 @@ class AuthController extends Controller
         }
 
         // 老用户：建立 PC 端登录态
-        Auth::guard('web')->login($existingUser);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($existingUser, $remember);
         $request->session()->regenerate();
         $existingUser->incrementLoginCount($request->ip());
 
@@ -2338,7 +2347,8 @@ class AuthController extends Controller
             throw $e;
         }
 
-        Auth::guard('web')->login($user);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -2403,7 +2413,8 @@ class AuthController extends Controller
             return response()->json(['code' => 422, 'message' => $e->getMessage()], 422);
         }
 
-        Auth::guard('web')->login($user);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -2482,7 +2493,8 @@ class AuthController extends Controller
             $user->update($profile);
         }
 
-        Auth::guard('web')->login($user);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($user, $remember);
         $request->session()->regenerate();
         $user->incrementLoginCount($request->ip());
 
@@ -2558,7 +2570,8 @@ class AuthController extends Controller
         }
         Cache::forget(self::CACHE_OAUTH_DATA_PREFIX . $validated['token']);
 
-        Auth::guard('web')->login($target);
+        $remember = (bool) $request->session()->get('sso_remember', false);
+        Auth::guard('web')->login($target, $remember);
         $request->session()->regenerate();
         $target->incrementLoginCount($request->ip());
 

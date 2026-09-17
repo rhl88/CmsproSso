@@ -21,6 +21,10 @@
                    autocomplete="current-password" class="layui-input" lay-verify="required">
         </div>
         <div class="layui-form-item">
+            <input type="checkbox" name="remember" value="1" lay-skin="primary" id="login-remember" checked>
+            <label for="login-remember" style="font-size: 13px; color: #666;">记住登录状态</label>
+        </div>
+        <div class="layui-form-item">
             <button type="button" class="layui-btn layui-btn-fluid" lay-submit lay-filter="login-submit"
                     style="background: #2563eb; height: 44px; font-size: 15px;">
                 登 录
@@ -98,6 +102,9 @@ layui.use(['form', 'jquery', 'layer'], function(){
     var $ = layui.jquery;
     var layer = layui.layer;
 
+    // 渲染 layui 复选框（lay-skin="primary" 需手动 render）
+    form.render();
+
     $.ajaxSetup({
         headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
     });
@@ -160,6 +167,11 @@ layui.use(['form', 'jquery', 'layer'], function(){
         });
     }
     @endif
+
+    // 读取「记住登录状态」勾选值（供手机/邮箱/OAuth 等非 form 提交的登录方式使用）
+    function getRemember() {
+        return $('#login-remember').is(':checked') ? 1 : 0;
+    }
 
     // 从统一响应结构提取用户可读的错误信息（40201 校验错误时 data 为字段错误映射）
     function extractError(res) {
@@ -440,7 +452,8 @@ layui.use(['form', 'jquery', 'layer'], function(){
             data: {
                 phone: phone,
                 code: code,
-                invite_code: $.trim($('#phone-login-invite').val() || '')
+                invite_code: $.trim($('#phone-login-invite').val() || ''),
+                remember: getRemember()
             },
             success: function(res){
                 layer.close(loadIdx);
@@ -594,7 +607,8 @@ layui.use(['form', 'jquery', 'layer'], function(){
             data: {
                 email: email,
                 code: code,
-                invite_code: $.trim($('#email-login-invite').val() || '')
+                invite_code: $.trim($('#email-login-invite').val() || ''),
+                remember: getRemember()
             },
             success: function(res){
                 layer.close(loadIdx);
@@ -633,7 +647,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/relay/login-url',
             type: 'GET',
-            data: { platform: platform, redirect: redirect },
+            data: { platform: platform, redirect: redirect, remember: getRemember() },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -660,7 +674,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/wechat/login-url',
             type: 'GET',
-            data: { device: device, redirect: redirect },
+            data: { device: device, redirect: redirect, remember: getRemember() },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -687,7 +701,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/qq/login-url',
             type: 'GET',
-            data: { device: device, redirect: redirect },
+            data: { device: device, redirect: redirect, remember: getRemember() },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {
@@ -861,7 +875,7 @@ layui.use(['form', 'jquery', 'layer'], function(){
         $.ajax({
             url: window.SSO_API_BASE + '/auth/' + platform + '/login-url',
             type: 'GET',
-            data: { device: '', redirect: redirect },
+            data: { device: '', redirect: redirect, remember: getRemember() },
             success: function(res){
                 layer.close(loadIdx);
                 if (res.code === 0) {

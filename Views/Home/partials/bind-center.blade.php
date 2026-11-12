@@ -5,12 +5,15 @@
       1. 在页面放一个带 class="sso-bind-center-open" 的元素作为入口按钮/链接；
       2. 在页面 layui.js 与 jQuery 均已加载之后 @include('cmspro.sso::Home.partials.bind-center')。
 
+    内嵌模式：若页面存在 class="sso-bind-center-inline" 的容器（如框架账号页「账号绑定」Tab），
+    则绑定中心 DOM 会被移入该容器直接展示并自动加载列表，此时无需 .sso-bind-center-open 入口。
+
     自包含：本组件渲染绑定中心弹层 DOM 与独立脚本（layui.use 独立回调，事件委托到 document），
     不依赖宿主页脚本；若宿主未定义 window.SSO_API_BASE，则默认 /api/cmspro/sso。
     不含退出登录逻辑。
 
-    平台图标统一使用 layui 内置图标（layui-icon-login-wechat / layui-icon-login-qq / layui-icon-cellphone / layui-icon-email），
-    避免依赖单一页面的自定义样式类。
+    平台图标与前台登录页保持一致，统一使用应用自带 PNG 图标（public/apps/cmspro.sso/icon/），
+    不再使用 layui 字体图标（避免支付宝/抖音/微博等平台错误借用 QQ 图标）。
 --}}
 <div id="sso-bind-center-modal" style="display: none; padding: 20px 24px;">
     <div id="sso-bind-center-list"></div>
@@ -30,16 +33,19 @@ layui.use(['jquery', 'layer'], function(){
 
     var bindModalIdx = null;
 
-    // 绑定中心：平台元信息（field 为已绑定状态下应展示的详情字段）
+    // 平台图标基路径（与登录页 sso-oauth-icon-btn 使用同一组图标）
+    var ICON_BASE = '{{ asset('apps/cmspro.sso/icon') }}';
+
+    // 绑定中心：平台元信息（icon 为 icon 目录下图片文件名，field 为已绑定状态下应展示的详情字段）
     var BIND_PLATFORMS = {
-        phone:  { label: '手机号', icon: 'layui-icon-cellphone',        color: '#2563eb', field: 'phone' },
-        email:  { label: '邮箱',   icon: 'layui-icon-email',            color: '#fa6400', field: 'email' },
-        wechat: { label: '微信',   icon: 'layui-icon-login-wechat',     color: '#07c160', field: 'nickname' },
-        qq:     { label: 'QQ',     icon: 'layui-icon-login-qq',         color: '#12b7f5', field: 'nickname' },
-        alipay: { label: '支付宝', icon: 'layui-icon-login-qq',         color: '#1677ff', field: 'nickname' },
-        douyin: { label: '抖音',   icon: 'layui-icon-login-qq',         color: '#111111', field: 'nickname' },
-        weibo:  { label: '微博',   icon: 'layui-icon-login-qq',         color: '#e6162d', field: 'nickname' },
-        github: { label: 'GitHub', icon: 'layui-icon-username',         color: '#181717', field: 'nickname' }
+        phone:  { label: '手机号', icon: 'phone.png',  field: 'phone' },
+        email:  { label: '邮箱',   icon: 'email.png',  field: 'email' },
+        wechat: { label: '微信',   icon: 'wechat.png', field: 'nickname' },
+        qq:     { label: 'QQ',     icon: 'qq.png',     field: 'nickname' },
+        alipay: { label: '支付宝', icon: 'alipay.png', field: 'nickname' },
+        douyin: { label: '抖音',   icon: 'douyin.png', field: 'nickname' },
+        weibo:  { label: '微博',   icon: 'weibo.png',  field: 'nickname' },
+        github: { label: 'GitHub', icon: 'github.png', field: 'nickname' }
     };
 
     // 入口：任意带 .sso-bind-center-open 的元素点击打开绑定中心（事件委托，兼容动态渲染）
@@ -79,9 +85,14 @@ layui.use(['jquery', 'layer'], function(){
     function renderBindList(data){
         var html = '';
         (data.platforms || []).forEach(function(platform){
-            var meta = BIND_PLATFORMS[platform] || {label: platform, icon: '', color: '#666'};
+            var meta = BIND_PLATFORMS[platform] || {label: platform, icon: ''};
             var item = data[platform] || {};
             var bound = !!item.bound;
+
+            // 图标：与登录页一致的平台 PNG 图片；未知平台无图标则留空
+            var iconHtml = meta.icon
+                ? '<img src="' + ICON_BASE + '/' + meta.icon + '" alt="' + meta.label + '" style="width:22px; height:22px; object-fit:contain; margin-right:12px;">'
+                : '<span style="width:26px; margin-right:12px;"></span>';
 
             // 已绑定：展示绑定详情（邮箱/手机号/微信名/QQ名），按平台对应的详情字段取值
             var field = meta.field || '';
@@ -97,7 +108,7 @@ layui.use(['jquery', 'layer'], function(){
                 : '<a href="javascript:;" data-action="bind" data-platform="' + platform + '" style="color:#2563eb;">绑定</a>';
 
             html += '<div style="display:flex; align-items:center; padding:12px 0; border-bottom:1px solid #f0f0f0;">'
-                + '<i class="layui-icon ' + meta.icon + '" style="font-size:22px; color:' + meta.color + '; margin-right:12px; width:26px; text-align:center;"></i>'
+                + iconHtml
                 + '<div style="flex:1; text-align:left;">'
                 + '<div style="font-size:14px; color:#333;">' + meta.label + '</div>'
                 + '<div>' + statusHtml + '</div>'
@@ -256,6 +267,14 @@ layui.use(['jquery', 'layer'], function(){
                 }
             }
         });
+    }
+
+    // 内嵌模式：宿主页面存在 .sso-bind-center-inline 容器时，把绑定中心 DOM 内嵌到该容器中直接展示，
+    // 并立即加载绑定列表；绑定手机、扫码绑定等二级交互仍复用上方弹层逻辑。
+    var inlineWrap = $('.sso-bind-center-inline');
+    if (inlineWrap.length) {
+        $('#sso-bind-center-modal').appendTo(inlineWrap).css({ display: 'block', padding: '0' });
+        refreshBindList();
     }
 
     // 手机验证码绑定弹窗

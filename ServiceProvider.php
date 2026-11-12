@@ -2,7 +2,6 @@
 
 namespace App\Apps\CmsproSso;
 
-use App\Apps\CmsproSso\Controllers\User\AccountController;
 use App\Models\AdminMenu;
 use App\Models\ConfigItem;
 use Illuminate\Support\Facades\Route;
@@ -30,6 +29,7 @@ class ServiceProvider extends BaseServiceProvider
         $this->registerRoutes();
         $this->loadViews();
         $this->registerHomeMenuComposer();
+        $this->registerUserAccountComposer();
         $this->registerHooks();
         $this->registerMiddleware();
         $this->registerEventListeners();
@@ -45,13 +45,6 @@ class ServiceProvider extends BaseServiceProvider
 
         // 前台统一登录路由（三模式）
         $this->registerHomeRoutes();
-
-        // 前台账号管理页覆盖（应用注入账号绑定，参照 CmsproNotepad 覆盖 dashboard 模式；不修改框架文件）
-        Route::prefix('user')
-            ->middleware(['web', 'auth:web'])
-            ->group(function () {
-                Route::get('/account', [AccountController::class, 'index'])->name('user.account');
-            });
     }
 
     /**
@@ -183,6 +176,33 @@ class ServiceProvider extends BaseServiceProvider
         };
 
         return $build(0);
+    }
+
+    /**
+     * 向系统前台账号页注入「账号绑定」Tab
+     *
+     * 读取系统框架账号页视图 user.account.index，经其扩展位注入 Tab 标题
+     * （@stack('user_account_tab_titles')）、Tab 面板（@stack('user_account_tab_contents')）
+     * 与共用绑定中心组件（@stack('user_account_scripts')）。
+     * 不覆盖框架路由与视图，框架账号页后续更新可正常透传。
+     */
+    protected function registerUserAccountComposer(): void
+    {
+        View::composer('user.account.index', function ($view) {
+            $factory = $view->getFactory();
+
+            $factory->startPush('user_account_tab_titles', '<li>账号绑定</li>');
+
+            $factory->startPush(
+                'user_account_tab_contents',
+                view('cmspro.sso::User.partials.bind-tab')->render()
+            );
+
+            $factory->startPush(
+                'user_account_scripts',
+                view('cmspro.sso::Home.partials.bind-center')->render()
+            );
+        });
     }
 
     protected function registerHooks(): void

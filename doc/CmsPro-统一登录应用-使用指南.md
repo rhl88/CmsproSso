@@ -225,6 +225,24 @@
 
 - 仅剩一种登录方式时点击「解绑」返回「当前仅剩此一种登录方式，不可解绑」
 
+### 3.7 记住登录状态
+
+前台登录弹窗提供「记住登录状态」勾选项，勾选后登录请求携带 `remember` 参数，服务端以 `Auth::guard('web')->login($user, true)`（密码登录为 `attempt($credentials, true)`）下发框架 remember cookie 并写入 `users.remember_token`，浏览器关闭后再次访问仍保持登录态；未勾选时不下发 remember cookie，`remember_token` 保持为空。
+
+支持的登录方式：
+
+- 密码登录 `POST /api/cmspro/sso/auth/login`
+- 注册后自动登录 `POST /api/cmspro/sso/auth/register`
+- 手机验证码登录 `POST /api/cmspro/sso/auth/phone-login`
+- 邮箱验证码登录 `POST /api/cmspro/sso/auth/email-login`
+- 社交登录（微信/QQ/支付宝/抖音/微博/GitHub 及快捷模式中转）：`/auth/{platform}/login-url` 与 PC 扫码接口在跳授权前把偏好写入 session（`sso_remember`），回调建号或登录时读取该偏好下发 cookie
+
+验证要点（`Tests/Feature/SsoRememberLoginTest.php`）：
+
+- 勾选 remember 登录：响应含 remember cookie，且该用户 `remember_token` 非空
+- 不勾选 remember 登录：响应无 remember cookie，`remember_token` 为空
+- 社交老用户经 `login-url` 带 remember 授权回调：登录后同样下发 remember cookie
+
 ### 3.8 邮箱验证码登录
 
 后台「邮箱验证 → 邮箱验证码登录」开关开启后，前台登录页出现「邮箱」按钮，点击弹出邮箱验证码登录弹窗。

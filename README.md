@@ -1,6 +1,6 @@
 # 统一登录应用 应用文档
 
-> 应用ID：`cmspro.sso` | 文档版本：2.0.20 | 应用版本：2.8.0 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
+> 应用ID：`cmspro.sso` | 文档版本：2.0.21 | 应用版本：2.8.0 | 依赖：PHP ≥ 8.3, CmsPro ≥ 5.0.0
 
 - 官方地址：<https://www.cmspro.cn/apps/cmspro.sso>
 
@@ -54,6 +54,9 @@
 
 ```
 CmsproSso/
+├── Assets/
+│   ├── icon/                        # 平台图标 PNG（经 apps/cmspro.sso/icon 对外暴露）
+│   └── js/captcha-widget.js         # 验证码前端组件
 ├── Config/sso.php                   # 应用配置默认值
 ├── Routes/
 │   ├── admin.php                    # 后台路由（设置/邀请码/客户端管理）
@@ -64,6 +67,8 @@ CmsproSso/
 │   ├── Admin/                       # 后台控制器（设置/邀请码/客户端管理）
 │   ├── Home/                        # 前台页面控制器（含快捷模式服务端授权端点）
 │   └── HomeApi/                     # 前台 API 控制器（含快捷模式开放 API 与中转登录）
+├── Listeners/
+│   └── HandleInviteOrderPaid.php    # 邀请码购买订单支付成功监听（幂等发放邀请码）
 ├── Middleware/
 │   ├── FrontAuthMiddleware.php      # 前台认证中间件
 │   └── OverrideSystemAuthMiddleware.php  # 覆盖系统登录中间件
@@ -82,6 +87,7 @@ CmsproSso/
 ├── Views/
 │   ├── Admin/                       # 设置页/邀请码管理/客户端管理
 │   ├── Home/                        # 前台页面（登录/注册/找回密码/完善资料/邀请码购买等）
+│   ├── User/partials/bind-tab.blade.php  # 账号页「账号绑定」Tab 面板（View composer 注入）
 │   └── layouts/home.blade.php       # 前台布局
 ├── Hooks.php                        # 钩子注册（预留）
 ├── Install.php                      # 安装/卸载/升级逻辑

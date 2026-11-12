@@ -38,8 +38,8 @@ class SettingService
         'override_system',
         'captcha_enabled', 'captcha_scenes', 'captcha_driver',
         'invite_enabled', 'invite_grant_mode', 'invite_price', 'invite_url', 'invite_text',
-        'phone_login_enabled', 'sms_provider',
-        'email_login_enabled',
+        'phone_login_enabled', 'sms_channel', 'sms_provider', 'sms_niuren_template_alias',
+        'email_login_enabled', 'email_mailer',
         'sms_aliyun_access_key_id', 'sms_aliyun_access_key_secret',
         'sms_aliyun_sign_name', 'sms_aliyun_template_code',
         'sms_tencent_secret_id', 'sms_tencent_secret_key',
@@ -224,9 +224,47 @@ class SettingService
     }
 
     /**
-     * 支持的短信服务商
+     * 支持的短信服务商（内置通道）
      */
     public const SMS_PROVIDERS = ['aliyun', 'tencent', 'volcengine'];
+
+    /**
+     * 短信通道：builtin 内置短信服务 / niuren 短信发送应用（NiurenSmssend）
+     */
+    public const SMS_CHANNELS = ['builtin', 'niuren'];
+
+    /**
+     * 短信发送应用 ID
+     */
+    public const SMSEND_APP_ID = 'niuren.smssend';
+
+    /**
+     * 获取当前短信通道（非法值回退为 builtin，保持既有行为）
+     */
+    public function getSmsChannel(): string
+    {
+        $channel = $this->get('sms_channel', 'builtin');
+
+        return in_array($channel, self::SMS_CHANNELS, true) ? $channel : 'builtin';
+    }
+
+    /**
+     * 短信发送应用是否已安装并启用
+     */
+    public function isSmssendAppReady(): bool
+    {
+        $app = AppModel::where('app_id', self::SMSEND_APP_ID)->first();
+
+        return $app !== null && $app->status === AppStatus::ENABLED;
+    }
+
+    /**
+     * 获取短信发送应用模板标识
+     */
+    public function getSmssendTemplateAlias(): string
+    {
+        return trim($this->get('sms_niuren_template_alias', ''));
+    }
 
     /**
      * 判断是否启用手机验证码登录
@@ -237,11 +275,72 @@ class SettingService
     }
 
     /**
-     * 判断是否启用邮箱验证码登录（需系统已配置 SMTP 才可用）
+     * SMTP邮箱应用 ID
+     */
+    public const SMTPMAIL_APP_ID = 'cmspro.smtpmail';
+
+    /**
+     * 发信方式取值
+     */
+    public const EMAIL_MAILERS = ['system', 'smtpmail'];
+
+    /**
+     * SMTP邮箱应用是否已安装并启用
+     */
+    public function isSmtpmailAppReady(): bool
+    {
+        $app = AppModel::where('app_id', self::SMTPMAIL_APP_ID)->first();
+
+        return $app !== null && $app->status === AppStatus::ENABLED;
+    }
+
+    /**
+     * SMTP邮箱应用是否已接管系统邮件（takeover_system_mail 开启）
+     */
+    public function isSmtpmailTakeoverActive(): bool
+    {
+        if (!$this->isSmtpmailAppReady() || !function_exists('smtpmail_config')) {
+            return false;
+        }
+
+        return smtpmail_config('takeover_system_mail', '0') === '1';
+    }
+
+    /**
+     * 获取当前发信方式（非法值回退为 system）
+     */
+    public function getEmailMailer(): string
+    {
+        $mailer = $this->get('email_mailer', 'system');
+
+        return in_array($mailer, self::EMAIL_MAILERS, true) ? $mailer : 'system';
+    }
+
+    /**
+     * 判断是否启用邮箱验证码登录
+     *
+     * 可用条件（满足其一）：
+     * 1. SMTP邮箱应用已接管系统邮件（takeover_system_mail 开启）
+     * 2. email_mailer=smtpmail 且 SMTP邮箱应用已安装启用
+     * 3. email_mailer=system 且系统 SMTP 已配置
      */
     public function isEmailLoginEnabled(): bool
     {
-        return $this->get('email_login_enabled', '0') === '1' && mail_configured();
+        if ($this->get('email_login_enabled', '0') !== '1') {
+            return false;
+        }
+
+        // SMTP邮箱接管系统邮件时，无论 email_mailer 设置如何均可用
+        if ($this->isSmtpmailTakeoverActive()) {
+            return true;
+        }
+
+        $mailer = $this->getEmailMailer();
+        if ($mailer === 'smtpmail') {
+            return $this->isSmtpmailAppReady();
+        }
+
+        return mail_configured();
     }
 
     /**

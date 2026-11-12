@@ -3,6 +3,7 @@
 namespace App\Apps\CmsproSso\Controllers\Admin;
 
 use App\Apps\CmsproSso\Services\SettingService;
+use App\Apps\NiurenSmssend\Services\TemplateService;
 use App\Enums\AppStatus;
 use App\Models\AppModel;
 use App\Models\ConfigGroup;
@@ -45,6 +46,16 @@ class SettingController extends Controller
         $captcha = AppModel::where('app_id', 'cmspro.captcha')->first();
         $captchaScenes = array_filter(array_map('trim', explode(',', (string) ($configs['captcha_scenes'] ?? ''))));
 
+        // SMTP邮箱应用安装/启用/接管状态：邮箱验证发信方式的前置依赖
+        $smtpmail = AppModel::where('app_id', 'cmspro.smtpmail')->first();
+        $smtpmailEnabled = $smtpmail !== null && $smtpmail->status === AppStatus::ENABLED;
+        $smtpmailTakeover = $smtpmailEnabled && function_exists('smtpmail_config')
+            && smtpmail_config('takeover_system_mail', '0') === '1';
+
+        // 短信发送应用安装/启用状态与可用模板：手机验证码短信通道的前置依赖
+        $smssend = AppModel::where('app_id', 'niuren.smssend')->first();
+        $smssendEnabled = $smssend !== null && $smssend->status === AppStatus::ENABLED;
+
         return view('cmspro.sso::Admin.settings.index', [
             'configs'             => $configs,
             'relay_callback_url'  => \App\Apps\CmsproSso\Services\ShareService::frontUrl('/auth/relay/callback'),
@@ -54,7 +65,38 @@ class SettingController extends Controller
             'captcha_enabled_app' => $captcha !== null && $captcha->status === AppStatus::ENABLED,
             'captcha_scene_login' => in_array('login', $captchaScenes, true),
             'captcha_scene_register' => in_array('register', $captchaScenes, true),
+            'smtpmail_installed'  => $smtpmail !== null,
+            'smtpmail_enabled'    => $smtpmailEnabled,
+            'smtpmail_takeover'   => $smtpmailTakeover,
+            'smssend_installed'   => $smssend !== null,
+            'smssend_enabled'     => $smssendEnabled,
+            'smssend_templates'   => $this->smssendTemplateOptions($smssendEnabled),
         ]);
+    }
+
+    /**
+     * 获取短信发送应用中「已启用且已设置模板标识」的模板选项
+     *
+     * 应用未启用、类不可加载或查询异常时返回空数组，保证设置页仍可正常渲染。
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function smssendTemplateOptions(bool $smssendEnabled): array
+    {
+        if (!$smssendEnabled || !class_exists(TemplateService::class)) {
+            return [];
+        }
+
+        try {
+            $templates = app(TemplateService::class)->options();
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $templates,
+            static fn (array $item): bool => ($item['alias'] ?? '') !== ''
+        ));
     }
 
     /**

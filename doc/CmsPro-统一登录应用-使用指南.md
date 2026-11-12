@@ -34,7 +34,7 @@
 | `apps` 表                         | 存在 `cmspro.sso` 记录，status=1（启用）                |
 | `admin_menus` 表                  | 存在「统一登录」菜单（含邀请码管理、登录设置、客户端管理子菜单）               |
 | `admin_permissions` 表            | 存在 `cmspro.sso.manage`、`cmspro.sso.setting` 权限 |
-| `config_items` 表                 | 存在 `app_cmspro_sso_*` 配置项（42 项，8 组）            |
+| `config_items` 表                 | 存在 `app_cmspro_sso_*` 配置项（49 项，8 组）            |
 | `app_cmspro_sso_login_logs` 表    | 已创建                                            |
 | `app_cmspro_sso_invite_codes` 表  | 已创建                                            |
 | `app_cmspro_sso_invite_orders` 表 | 已创建                                            |
@@ -160,7 +160,14 @@
 
 后台「登录设置 → 手机验证码登录」开关开启后，前台登录页出现「手机登录」按钮，点击弹出验证码登录弹窗。
 
-配置步骤（三选一短信服务商，同一时间仅一家生效）：
+后台「登录设置 → 手机登录」Tab 内先选择**短信通道**，再按通道填写对应参数：
+
+| 通道 | 依赖 | 需填写的配置项 |
+| ---- | ---- | -------------- |
+| 内置短信服务（默认） | 无，凭证保存在本应用 | 短信服务商 + 该服务商的凭证 / 签名 / 模板 |
+| 短信发送应用 | 「短信发送」应用（app_id `niuren.smssend`）已安装并启用 | 短信模板（从该应用已启用的模板中选择） |
+
+**通道一：内置短信服务** —— 三选一短信服务商，同一时间仅一家生效：
 
 | 服务商  | 后台配置项                                                    | 说明                  |
 | ---- | -------------------------------------------------------- | ------------------- |
@@ -168,9 +175,21 @@
 | 腾讯云  | SecretId / SecretKey / SDKAppID / 短信签名 / 模板 ID           | 短信应用需开通验证码模板        |
 | 火山引擎 | AccessKey ID / Secret Access Key / 消息组 ID / 短信签名 / 模板 ID | 消息组 ID 即 SmsAccount |
 
+**通道二：短信发送应用（NiurenSmssend）** —— 本应用不保存任何服务商凭证，改为按模板标识（alias）调用该应用的 `SendService::sendByAlias()`；服务商、签名与服务商模板 Code 均由该应用的模板记录决定：
+
+| 前置条件 | 说明 |
+| -------- | ---- |
+| 应用已安装并启用 | 未安装 / 未启用时「短信发送应用」通道在下拉中置灰不可选，并标注「（未安装）」/「（未启用）」；设置页同时显示引导卡片，提供「前往应用市场安装」/「前往应用管理启用」跳转 |
+| 已创建验证码模板 | 需在该应用「模板管理」（`/admin/niuren/smssend/templates`）创建模板并填写模板标识，模板内须包含变量 `code` 用于接收验证码；模板未使用 `code` 变量时回退写入第一个字段 |
+| 模板已启用且已填标识 | 下拉框仅列出该应用中已启用且已设置模板标识的模板 |
+
+短信模板使用可搜索下拉框（layui `lay-search`），支持按模板名称或模板标识输入过滤。已保存的标识若不在当前可用模板列表中，会以「（当前不可用）」选项保留展示，避免保存时被静默清空；已存值也不会因通道置灰而丢失（保存时按控件取值，不跳过 disabled 项）。
+
 验证要点：
 
-- 开启开关但未填写短信凭证时，发送验证码返回「短信服务未配置，请联系管理员」
+- 开启开关但通道参数不完整时，发送验证码返回「短信服务未配置，请联系管理员」（内置通道检查凭证/签名/模板，短信发送应用通道检查应用启用状态与模板标识）
+
+- 走短信发送应用通道时，可在该应用「发送记录」中核对本次发送，调用方 `caller_app` 记为 `cmspro.sso`
 
 - 点击「获取验证码」后按钮进入 60 秒倒计时，同一手机号 60 秒内不可重复发送
 
@@ -182,7 +201,9 @@
 
 ### 3.6 账号绑定中心
 
-登录后首页点击「账号绑定」按钮，弹窗仅展示后台已开启的快捷登录方式（手机号看「手机登录 → 启用验证码登录」，微信看「微信设置 → 启用微信登录」，QQ 看「QQ设置 → 启用QQ登录」），展示对应绑定状态，支持绑定与解绑。
+登录后首页提供「账号绑定」入口按钮，点击后弹窗展示；系统前台账号页（`/user/account`）以 Tab 形式组织，默认展示「个人信息」，安装本应用后追加「账号绑定」Tab，Tab 内直接内嵌绑定列表（绑定手机号、扫码绑定等二级交互仍为弹窗）。两种入口均仅展示后台已开启的快捷登录方式（手机号看「手机登录 → 启用验证码登录」，微信看「微信设置 → 启用微信登录」，QQ 看「QQ设置 → 启用QQ登录」），展示对应绑定状态，支持绑定与解绑。
+
+> 账号页 Tab 由本应用通过 View composer 读取系统框架账号页视图 `user.account.index`，经其扩展位（`@stack('user_account_tab_titles')` Tab 标题区 / `@stack('user_account_tab_contents')` Tab 内容区 / `@stack('user_account_scripts')` 脚本区）注入，不覆盖框架路由与视图；框架账号页后续更新（如新增头像上传等新特性）可正常透传生效。
 
 交互说明：
 
@@ -208,13 +229,21 @@
 
 后台「邮箱验证 → 邮箱验证码登录」开关开启后，前台登录页出现「邮箱」按钮，点击弹出邮箱验证码登录弹窗。
 
-前置条件：
+发信方式（后台「邮箱验证 → 发信方式」）：
 
-- 系统已配置 SMTP 邮箱（后台「系统设置 → 邮件设置」）；未配置时后台设置页显示黄色警示条，且即使开关开启前台也不显示入口（`mail_configured()` 判断）
+| 场景 | 发信方式取值 | 生效条件 |
+| ---- | ------------ | -------- |
+| 「SMTP邮箱」应用（app_id `cmspro.smtpmail`）已启用且开启「接管系统邮件」 | 强制 `smtpmail`，设置页不显示下拉，改为绿色确认条 + 隐藏域 | 无需额外配置，验证码邮件由 SMTP邮箱 发送 |
+| 未开启接管，手动选择 | `system` 系统邮件配置（默认） | 系统已配置 SMTP（后台「系统设置 → 邮件设置」），由 `mail_configured()` 判断 |
+| 未开启接管，手动选择 | `smtpmail` SMTP邮箱应用 | 「SMTP邮箱」应用已安装并启用 |
+
+「SMTP邮箱」应用未安装 / 未启用时，下拉中的「SMTP邮箱应用」选项置灰不可选并标注「（未安装）」/「（未启用）」，设置页同时显示引导卡片，提供「前往应用市场安装」/「前往应用管理启用」跳转；当前发信方式已指向 SMTP邮箱 但该应用转为不可用时，显示黄色警示条提示切回系统邮件配置。
+
+前台入口可用性由 `SettingService::isEmailLoginEnabled()` 统一裁决，判定优先级为：接管系统邮件 > 所选发信方式对应的可用性 > 系统 SMTP 配置。因此「SMTP邮箱」接管系统邮件时，即便系统自身未配置 SMTP，邮箱验证码登录依然可用。
 
 验证要点：
 
-- 未配置 SMTP 时开关开启不生效（登录页无「邮箱」按钮，接口返回「邮箱验证码登录未启用」）
+- 所选发信方式不可用时开关开启不生效（登录页无「邮箱」按钮，接口返回「邮箱验证码登录未启用」）；发信方式为系统邮件配置时对应「系统未配置 SMTP」，为 SMTP邮箱 时对应「应用未安装或未启用」
 
 - 点击「获取验证码」后按钮进入 60 秒倒计时，同一邮箱每分钟最多发送 3 次，超出返回 429
 
@@ -327,8 +356,8 @@ app/Apps/CmsproSso/
 │   ├── ShareService.php           # 前台 URL 生成
 │   ├── WechatOauthService.php     # 微信 OAuth2 服务
 │   ├── QqOauthService.php         # QQ 互联 OAuth2 服务
-│   ├── SmsService.php             # 短信发送门面（按服务商调度）
-│   ├── Sms/                       # 短信发送器（阿里云/腾讯云/火山引擎）
+│   ├── SmsService.php             # 短信发送门面（先按短信通道分流，内置通道再按服务商调度）
+│   ├── Sms/                       # 短信发送器（阿里云/腾讯云/火山引擎/短信发送应用）
 │   ├── OAuthService.php           # 快捷模式服务端 OAuth 服务
 │   └── RelayClientService.php     # 快捷模式客户端中转服务
 ├── Tests/                         # 应用级测试（Feature）
@@ -339,6 +368,7 @@ app/Apps/CmsproSso/
 │   ├── Admin/clients/index.blade.php    # 后台客户端管理页
 │   ├── Admin/invite/index.blade.php     # 后台邀请码管理页
 │   ├── Home/                             # 前台页面
+│   ├── User/partials/bind-tab.blade.php   # 账号绑定 Tab 面板（注入框架账号页扩展位）
 │   └── layouts/home.blade.php            # 前台布局
 └── doc/                           # 应用文档
 ```
@@ -348,8 +378,11 @@ app/Apps/CmsproSso/
 | 问题               | 解决方案                                                          |
 | ---------------- | ------------------------------------------------------------- |
 | 登录页不显示手机登录入口     | 后台「手机登录」Tab 开启「启用手机验证码登录」                                     |
-| 登录页不显示邮箱登录入口     | 后台「邮箱验证」Tab 开启「邮箱验证码登录」，且系统已配置 SMTP 邮箱                        |
-| 发送验证码提示「短信服务未配置」 | 检查所选短信服务商的凭证、签名、模板是否填写完整                                      |
+| 登录页不显示邮箱登录入口     | 后台「邮箱验证」Tab 开启「邮箱验证码登录」，且所选发信方式可用（系统邮件配置需已配置 SMTP；SMTP邮箱 需应用已启用，或该应用已开启接管系统邮件） |
+| 发信方式中「SMTP邮箱应用」置灰 | 「SMTP邮箱」应用未安装或未启用，按设置页引导卡片前往应用市场安装 / 应用管理启用后即可选择 |
+| 短信通道中「短信发送应用」置灰  | 「短信发送」应用未安装或未启用，按设置页引导卡片前往应用市场安装 / 应用管理启用后即可选择 |
+| 发送验证码提示「短信服务未配置」 | 内置通道检查所选服务商的凭证、签名、模板是否填写完整；短信发送应用通道检查该应用是否启用、是否已选择短信模板 |
+| 短信模板下拉无可选项       | 「短信发送」应用中尚无「已启用且已填写模板标识」的模板，前往 `/admin/niuren/smssend/templates` 创建后再回本页选择 |
 | 收不到验证码           | 确认短信服务商控制台签名/模板已审核通过，模板变量名须为 `code`                           |
 | 子域名模式无法访问        | 配置 DNS 解析、Web 服务器虚拟主机，`.env` 设置 `SESSION_DOMAIN=.example.com` |
 | 切换访问模式后不生效       | 执行 `php artisan route:clear && php artisan config:clear`      |
@@ -397,4 +430,7 @@ app/Apps/CmsproSso/
 | 2.2.0  | 2026-09-10 | 新增注册用户名/昵称屏蔽词：后台「访问设置」Tab 在「允许注册」下方新增「用户名屏蔽词」textarea（`username_banned_words` 配置项，加入保存白名单与 manifest 声明），注册接口 `register()` 在字段验证后校验用户名与昵称——包含任一屏蔽词（不区分大小写）即拒绝注册（422 提示「用户名/昵称包含被屏蔽的词语，请更换」），昵称未填写时由用户名兜底不重复校验，屏蔽词支持英文/中文逗号、分号、换行分隔（`SettingService::getBannedWords()` 解析、`isUsernameBanned()` 判定）；社交/手机/邮箱自动建号用户名不受影响；新增 `SsoRegisterBannedWordsTest` 11 用例（应用全量 118 用例通过） | <br /> |
 | 2.3.0  | 2026-09-10 | 新增人机验证码：后台「登录设置」在「登录成功默认跳转」下方新增「验证码开关」（`captcha_enabled`，开启时强依赖「验证码」应用 cmspro.captcha——未安装/未启用显示警示条并拦截保存 400）、「启用位置」多选（`captcha_scenes`：登录/注册，至少一项）与「验证码模式」选择（`captcha_driver`：图片字符/算术/中文/文字点选/滑块拼图/旋转/点击按钮，可点击 `/admin/cmspro/captcha/demo` 打开验证码应用演示页预览体验）；前台登录/注册页按启用场景渲染 `captcha-widget.js` 通用组件（7 种模式渲染与交互，提交携带 captcha\_key/captcha\_answer，未完成验证禁止提交，失败自动刷新），API 侧 `verifyCaptcha` 场景级强校验（未开启跳过，开启后未完成/答错 422，校验通过由验证码应用一次性消费防重放，先于账号锁定检查防绕过）；新增 `SsoCaptchaTest` 18 用例（应用全量 136 用例通过） | <br /> |
 | 2.6.2  | 2026-09-11 | 覆盖系统托管跳转地址二次处理：登录/注册页对透传的 redirect 规范化（`normalizeRedirect()`）——嵌套托管登录/注册页完整 URL（中间件 fullUrl 透传）自动提取内层 redirect 作为真实目标、相对路径补全主站域名成绝对地址（防子域名模式下登录后相对跳转落到 SSO 子域 404）、绝对地址同主域原样保留/外域丢弃走默认跳转；已登录直跳（`resolveRedirect()`）同步规范化；新增 `SsoRedirectNormalizeTest` 12 用例（应用全量 160 用例通过） | <br /> |
+| 2.6.4  | 2026-10-20 | 前台账号页「账号绑定」注入方式改为「读取框架视图后注入」：移除此前在 ServiceProvider 覆盖系统同名路由 `user.account`（`/user/account`）渲染应用整页视图的做法，改由 View composer 读取系统框架账号页视图 `user.account.index`，经其扩展位（`@stack('user_account_content')` 内容区 / `@stack('user_account_scripts')` 脚本区）注入账号绑定卡片与共用绑定中心组件；删除应用侧整页视图 `Views/User/account.blade.php` 与覆盖控制器 `Controllers/User/AccountController.php`，路由交还框架（`User\ViewController@accountIndex`）；框架账号页后续更新（如新增头像上传等新特性）可正常透传生效（`SsoAccountBindEntryTest` 通过） | <br /> |
+| 2.7.0  | 2026-10-20 | 前台账号页「账号绑定」改为 Tab 形式展示：框架账号页视图 `resources/views/user/account/index.blade.php` 由单卡片改为 `layui-tab layui-tab-card`（`layui.use` 增加 `element` 模块并渲染 Tab），默认选中「个人信息」；扩展位由 `user_account_content`（内容区）拆分为 `user_account_tab_titles`（Tab 标题区）与 `user_account_tab_contents`（Tab 内容区），`user_account_scripts`（脚本区）保持不变。应用侧 `Views/User/partials/bind-card.blade.php` 重命名为 `bind-tab.blade.php`（输出 `.layui-tab-item` 面板 + `.sso-bind-center-inline` 内嵌容器）；共用组件 `Views/Home/partials/bind-center.blade.php` 新增内嵌模式——宿主页存在 `.sso-bind-center-inline` 容器时把绑定中心 DOM 移入容器直接展示并自动加载绑定列表（绑定手机号、扫码绑定等二级交互仍为弹窗，前台首页 `.sso-bind-center-open` 弹窗入口行为不变）；`ServiceProvider::registerUserAccountComposer()` 改为推送 Tab 标题 + Tab 面板 + 脚本三处（`SsoAccountBindEntryTest` 6 断言通过；应用全量 244 通过 / 3 失败，失败项为既有问题：QQ 登录 2 例与找回密码邮箱配置 1 例，与本次改动无关） | <br /> |
+| 2.8.0  | 2026-11-12 | 邮箱验证码登录新增「发信方式」选择（`email_mailer`：系统邮件配置 / SMTP邮箱应用），「SMTP邮箱」应用（`cmspro.smtpmail`）开启「接管系统邮件」时强制走该应用并隐藏下拉（绿色确认条 + 隐藏域），未安装/未启用时该选项在下拉中置灰并标注状态，设置页显示引导卡片提供「前往应用市场安装」/「前往应用管理启用」跳转，当前发信方式指向 SMTP邮箱 而该应用转为不可用时显示黄色警示条；`SettingService::isEmailLoginEnabled()` 判定优先级调整为「接管系统邮件 > 所选发信方式可用性 > 系统 SMTP 配置」。手机验证码登录新增「短信通道」选择（`sms_channel`：内置短信服务 / 短信发送应用），选择「短信发送应用」（`niuren.smssend`）时不再在本应用保存服务商凭证，改由新建的 `Services/Sms/NiurenSmsSender.php` 按模板标识调用该应用 `SendService::sendByAlias()` 发送（`caller_app` 记为 `cmspro.sso`），`SmsService` 调整为先按通道分流、内置通道再按服务商调度；通道未就绪时同样置灰 + 引导卡片。短信模板由单行文本改为可搜索下拉框（layui `lay-search`，配置项 `sms_niuren_template_alias`），选项来自该应用已启用且已填模板标识的模板，保留空选项与「（当前不可用）」选项以避免已存值被静默清空，未选择模板时显示黄色警告条并附「短信发送 → 模板管理」跳转链接 | <br /> |
 

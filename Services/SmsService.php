@@ -4,14 +4,16 @@ namespace App\Apps\CmsproSso\Services;
 
 use App\Apps\CmsproSso\Services\Sms\AbstractSmsSender;
 use App\Apps\CmsproSso\Services\Sms\AliyunSmsSender;
+use App\Apps\CmsproSso\Services\Sms\NiurenSmsSender;
 use App\Apps\CmsproSso\Services\Sms\TencentSmsSender;
 use App\Apps\CmsproSso\Services\Sms\VolcengineSmsSender;
 
 /**
  * 短信发送门面服务
  *
- * 根据当前配置的短信服务商，调度对应发送器发送验证码短信，
- * 并对外提供「是否已配置」判断，供登录/发送验证码前检查。
+ * 先按「短信通道」决定走内置服务商还是短信发送应用（NiurenSmssend），
+ * 内置通道再按服务商调度对应发送器，并对外提供「是否已配置」判断，
+ * 供登录/发送验证码前检查。
  */
 class SmsService
 {
@@ -31,10 +33,18 @@ class SmsService
     }
 
     /**
-     * 判断当前短信服务商所需凭证是否已完整配置
+     * 判断当前短信通道所需配置是否已完整
+     *
+     * 短信发送应用通道：应用已安装启用 + 已填写模板标识；
+     * 内置通道：所选服务商的必填凭证均已填写。
      */
     public function isConfigured(): bool
     {
+        if ($this->isNiurenChannel()) {
+            return $this->settingService->isSmssendAppReady()
+                && $this->settingService->getSmssendTemplateAlias() !== '';
+        }
+
         foreach ($this->requiredKeys($this->settingService->getSmsProvider()) as $key) {
             if (trim($this->settingService->get($key)) === '') {
                 return false;
@@ -45,10 +55,22 @@ class SmsService
     }
 
     /**
-     * 根据服务商获取对应发送器
+     * 当前是否使用短信发送应用通道
+     */
+    protected function isNiurenChannel(): bool
+    {
+        return $this->settingService->getSmsChannel() === 'niuren';
+    }
+
+    /**
+     * 根据通道与服务商获取对应发送器
      */
     protected function sender(): AbstractSmsSender
     {
+        if ($this->isNiurenChannel()) {
+            return app(NiurenSmsSender::class);
+        }
+
         return match ($this->settingService->getSmsProvider()) {
             'tencent'    => app(TencentSmsSender::class),
             'volcengine' => app(VolcengineSmsSender::class),

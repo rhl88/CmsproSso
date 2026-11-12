@@ -50,8 +50,14 @@ $enabled = $app && $app->status->value === 1;
 | `getWechatOauthUrl()` | - | string | 获取外挂地址 |
 | `getDefaultRedirect()` | - | string | 获取登录默认跳转地址 |
 | `isPhoneLoginEnabled()` | - | bool | 是否启用手机验证码登录 |
-| `isEmailLoginEnabled()` | - | bool | 是否启用邮箱验证码登录（开关开启且系统已配置 SMTP 才返回 true） |
-| `getSmsProvider()` | - | string | 获取当前短信服务商（aliyun/tencent/volcengine） |
+| `isEmailLoginEnabled()` | - | bool | 是否启用邮箱验证码登录（开关开启且所选发信方式可用；「SMTP邮箱」接管系统邮件时无需系统自身配置 SMTP） |
+| `getEmailMailer()` | - | string | 当前发信方式（`system` 系统邮件配置 / `smtpmail` SMTP邮箱应用）；SMTP邮箱 接管系统邮件时强制返回 `smtpmail` |
+| `isSmtpmailAppReady()` | - | bool | 「SMTP邮箱」应用（`cmspro.smtpmail`）是否已安装并启用 |
+| `isSmtpmailTakeoverActive()` | - | bool | 「SMTP邮箱」应用是否已启用且开启「接管系统邮件」 |
+| `getSmsChannel()` | - | string | 当前短信通道（`builtin` 内置短信服务 / `niuren` 短信发送应用） |
+| `isSmssendAppReady()` | - | bool | 「短信发送」应用（`niuren.smssend`）是否已安装并启用 |
+| `getSmssendTemplateAlias()` | - | string | 短信发送应用通道使用的模板标识（alias） |
+| `getSmsProvider()` | - | string | 获取当前短信服务商（aliyun/tencent/volcengine），仅内置短信服务通道有效 |
 
 **ShareService**（静态方法）
 
@@ -63,8 +69,8 @@ $enabled = $app && $app->status->value === 1;
 
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
-| `sendVerificationCode(string $phone, string $code)` | 手机号、验证码 | array | 按当前服务商发送验证码短信，返回 `['success'=>bool,'message'=>string]` |
-| `isConfigured()` | - | bool | 当前服务商所需凭证是否已完整配置 |
+| `sendVerificationCode(string $phone, string $code)` | 手机号、验证码 | array | 发送验证码短信，返回 `['success'=>bool,'message'=>string]`；先按 `SettingService::getSmsChannel()` 分流——内置通道按 `sms_provider` 调度对应发送器，短信发送应用通道交由 `Services/Sms/NiurenSmsSender.php` 按模板标识调用该应用 `SendService::sendByAlias()` |
+| `isConfigured()` | - | bool | 按当前通道校验配置完整性：内置通道校验所选服务商凭证/签名/模板，短信发送应用通道校验该应用已启用且模板标识非空 |
 
 **WechatOauthService**
 
@@ -193,9 +199,9 @@ if ($context) {
 1. **数据隔离**：本应用复用系统 `users`、`user_third_party` 表，不新建用户表。微信登录通过 `user_third_party`（platform=wechat + open_id）关联用户。
 2. **钩子归属**：本应用直接使用 `Auth::guard('web')` 登录，不触发系统 `user.*` 钩子。扩展登录流程应通过本应用 `Hooks.php` 预留扩展点。
 3. **配置缓存**：修改配置后需执行 `php artisan route:clear && php artisan config:clear`（涉及访问模式时）。
-4. **依赖声明**：本应用无应用依赖（微信能力独立实现），仅依赖 `endroid/qr-code` composer 包。
+4. **依赖声明**：composer 依赖仅 `endroid/qr-code`；应用级为**可选依赖**——「验证码」（人机验证码）、「SMTP邮箱」（邮箱发信方式之一）、「短信发送」（短信通道之一），均通过 `AppModel` + `AppStatus::ENABLED` 判断安装/启用状态，并以 `function_exists()` / `class_exists()` 守卫实际调用，缺失时降级为友好提示或置灰引导，不影响其余登录方式。
 5. **微信登录未配置**：调用 `WechatOauthService` 前应先通过 `SettingService::isWechatConfigured()` 检查，未配置时返回友好提示。
-6. **短信未配置**：调用 `SmsService::sendVerificationCode()` 前应先通过 `SmsService::isConfigured()` 检查，未配置时返回友好提示。
+6. **短信未配置**：调用 `SmsService::sendVerificationCode()` 前应先通过 `SmsService::isConfigured()` 检查（按通道分流校验，详见 3.2），未配置时返回友好提示；走短信发送应用通道时本应用不保存任何服务商凭证，发送结果可在该应用「发送记录」中按 `caller_app=cmspro.sso` 核对。
 7. **开放重定向防护**：登录跳转地址通过 `isSafeRedirect()` 校验，仅允许站内相对路径或同域绝对地址。
 8. **短信凭证安全**：短信服务商的 SecretKey 等敏感配置以密文存储，仅平台后台可见，应用内部不得打印日志。
 9. **绑定与登录 state 隔离**：绑定授权 state 存 session 键 `cmspro_sso_{platform}_bind_oauth_state`（PC 扫码绑定存 Cache `cmspro_sso_bind_state:`，含目标用户 id，回调据此落库），登录 state 存 `cmspro_sso_{platform}_oauth_state`（PC 扫码存 Cache `cmspro_sso_login_state:`）；绑定结果轮询走 Cache `cmspro_sso_bind_result:`。三者共用回调地址，回调按 state 校验位置区分模式，禁止混用。
@@ -203,11 +209,16 @@ if ($context) {
 11. **快捷模式令牌安全**：访问令牌明文仅签发时返回一次，库存 SHA256 哈希不可逆推；授权码一次性使用且 5 分钟有效；回调地址白名单精确匹配，禁止使用前缀/通配匹配（防开放重定向）。
 12. **快捷模式身份锚点**：服务端为纯跳板（不建号、不绑定、不保存任何用户数据），客户端以「社交平台真实 openid」为 open_id（platform=relay）建立本地映射，同一社交账号无论经哪个服务端中转、中转哪个社交平台均对应同一本地账号；社交授权数据（openid/unionid/昵称/头像/令牌/raw_data）经 Cache 暂存凭 data_token 一次性透传，服务端不落库。
 13. **快捷模式扩展平台**：中转透传链路平台无关——新增可中转社交平台时，在 `OAuthService::PLATFORMS` 增加定义并为该平台实现配置判断（启用开关 + 凭证完整性）与社交回调（`/auth/{platform}/callback`），服务端开放 API 与客户端登录页入口自动生效，服务端与客户端中转逻辑均无需改动。
+14. **框架账号页注入**：前台账号页以 Tab 形式组织（默认「个人信息」），「账号绑定」Tab 通过 View composer（`ServiceProvider::registerUserAccountComposer()`）读取系统框架账号页视图 `user.account.index` 后经其扩展位注入，不覆盖框架路由与视图——Tab 标题区 `@stack('user_account_tab_titles')`（`ul.layui-tab-title` 内，注入 `<li>账号绑定</li>`）、Tab 内容区 `@stack('user_account_tab_contents')`（`.layui-tab-content` 内，注入 `.layui-tab-item` 面板）、脚本区 `@stack('user_account_scripts')`（layui.js 加载之后）；标题与内容必须成对注入且顺序一致，否则 Tab 标题与面板错位。
+15. **绑定中心内嵌模式**：共用组件 `Views/Home/partials/bind-center.blade.php` 默认以弹层呈现（宿主页面放 `.sso-bind-center-open` 入口元素触发）；若宿主页面存在 `.sso-bind-center-inline` 容器（框架账号页「账号绑定」Tab 面板即为此形态），组件会把 `#sso-bind-center-modal` 移入该容器直接展示并自动加载绑定列表，此时无需入口元素。二级交互（手机验证码绑定、扫码绑定）两种模式下均为弹层。绑定中心组件依赖 layui/jQuery，必须注入脚本区，不可置于 layui.js 之前，否则报 `layui is not defined`。
 
 ## 八、版本与更新日志
 
 | 版本 | 日期 | 更新人 | 说明 |
 |------|------|--------|------|
+| 2.8.0 | 2026-11-12 |开发团队 |邮箱验证码登录新增「发信方式」（`email_mailer`：system/smtpmail）：`SettingService` 新增 `getEmailMailer()` / `isSmtpmailAppReady()` / `isSmtpmailTakeoverActive()`，`isEmailLoginEnabled()` 判定优先级改为「接管系统邮件 > 所选发信方式可用性 > 系统 SMTP 配置」，「SMTP邮箱」应用（`cmspro.smtpmail`）未安装/未启用时设置页选项置灰并显示引导卡片。手机验证码登录新增「短信通道」（`sms_channel`：builtin/niuren）：`SettingService` 新增 `getSmsChannel()` / `isSmssendAppReady()` / `getSmssendTemplateAlias()`，新增 `Services/Sms/NiurenSmsSender.php` 按模板标识调用「短信发送」应用（`niuren.smssend`）`SendService::sendByAlias()`（发送记录 `caller_app=cmspro.sso`），`SmsService::sendVerificationCode()` / `isConfigured()` 改为先按通道分流再按服务商调度，**公开方法签名不变，既有调用方无需改动**；设置页短信模板由单行文本改为 layui `lay-search` 可搜索下拉（配置项 `sms_niuren_template_alias`，新增 `SettingController::smssendTemplateOptions()`），保留空选项与「（当前不可用）」选项防止已存值被静默清空。注意：跨应用命名路由 `niuren.smssend.admin.templates.index` 仅在该应用启用时注册，设置页「模板管理」链接使用硬编码路径 `/admin/niuren/smssend/templates` 以避免 `route()` 抛 `RouteNotFoundException` |
+| 2.7.0 | 2026-10-20 |开发团队 |前台账号页「账号绑定」改为 Tab 展示：框架账号页视图 `resources/views/user/account/index.blade.php` 改用 `layui-tab layui-tab-card` 并引入 layui `element` 模块，默认选中「个人信息」，扩展位由 `user_account_content` 拆分为 `user_account_tab_titles`（Tab 标题区）与 `user_account_tab_contents`（Tab 内容区），`user_account_scripts` 保持不变；应用侧 `Views/User/partials/bind-card.blade.php` 更名为 `bind-tab.blade.php`（输出 `.layui-tab-item` 面板 + `.sso-bind-center-inline` 内嵌容器），`ServiceProvider::registerUserAccountComposer()` 改为推送 Tab 标题 + Tab 面板 + 脚本三处；共用绑定中心组件 `Views/Home/partials/bind-center.blade.php` 新增内嵌模式（存在 `.sso-bind-center-inline` 容器时移入 DOM 直接展示并自动加载列表，前台首页 `.sso-bind-center-open` 弹窗入口行为不变）；`SsoAccountBindEntryTest` 断言同步更新 |
+| 2.6.4 | 2026-10-20 |开发团队 |前台账号页「账号绑定」注入方式改为「读取框架视图 + View composer 注入扩展位」：移除此前覆盖系统同名路由 `user.account`（`/user/account`）渲染应用整页视图的做法，删除应用侧 `Views/User/account.blade.php` 与 `Controllers/User/AccountController.php`；新增 `ServiceProvider::registerUserAccountComposer()` 经框架账号页扩展位注入账号绑定卡片（`Views/User/partials/bind-card.blade.php`）与共用绑定中心组件（`Views/Home/partials/bind-center.blade.php`），路由交还框架，框架账号页后续更新可正常透传 |
 | 1.8.1 | 2026-09-02|开发团队 |修复 path 模式下 `frontUrl()` 跨子域名跳转：当前请求位于绑定的子域名（如论坛 `bbs.example.com`）时，自动返回主域名下的绝对 URL（基于 `config('app.url')`），避免跳转到子域名下不存在的 `/sso` 路径 |
 | 1.0.0 | 2026-08-13 | 开发团队 | 初始版本：统一登录应用，支持账号密码 + 微信登录，双模式访问 |
 | 1.1.0 | 2026-08-13 | 开发团队 | 新增「覆盖系统登录」开关，支持回车提交表单，移除前台 home_menus 导航 |

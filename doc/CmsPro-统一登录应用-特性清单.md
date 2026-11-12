@@ -70,17 +70,21 @@
 | 25 | 配置白名单  | `ALLOWED_KEYS` 白名单，防止篡改其他配置                                                                                                           | `Services/SettingService.php`             |
 | 26 | 配置保存   | `SettingController::update()` 白名单接收 + 清缓存                                                                                             | `Controllers/Admin/SettingController.php` |
 | 27 | 用户名屏蔽词 | 后台「访问设置 → 用户名屏蔽词」（`username_banned_words`，支持英文/中文逗号、分号、换行分隔），注册用户名与昵称包含任一屏蔽词（不区分大小写）拒绝注册（422）；`getBannedWords()` 解析、`isUsernameBanned()` 判定 | `Services/SettingService.php` / `Controllers/HomeApi/AuthController.php::register()` / `Views/Admin/settings/index.blade.php` |
+| 28 | 邮箱发信方式 | 后台「邮箱验证 → 发信方式」（`email_mailer`：`system` 系统邮件配置 / `smtpmail` SMTP邮箱应用）；「SMTP邮箱」应用（`cmspro.smtpmail`）开启「接管系统邮件」时强制 `smtpmail`，设置页隐藏下拉改为绿色确认条 + 隐藏域；该应用未安装/未启用时下拉选项置灰并标注状态，同时显示引导卡片（前往应用市场安装 / 应用管理启用）；`isEmailLoginEnabled()` 判定优先级：接管系统邮件 > 所选发信方式可用性 > 系统 SMTP 配置 | `Services/SettingService.php` / `Controllers/Admin/SettingController.php` / `Views/Admin/settings/index.blade.php` |
+| 29 | 短信通道 | 后台「手机登录 → 短信通道」（`sms_channel`：`builtin` 内置短信服务 / `niuren` 短信发送应用）；内置通道使用本应用保存的服务商凭证，短信发送应用通道的服务商、签名与模板由「短信发送」应用（`niuren.smssend`）统一管理；通道未就绪时下拉选项置灰并标注状态，同时显示引导卡片 | `Services/SettingService.php` / `Services/SmsService.php` / `Views/Admin/settings/index.blade.php` |
+| 30 | 短信模板标识 | 后台「手机登录 → 短信模板」（`sms_niuren_template_alias`），走短信发送应用通道时必填；控件为 layui `lay-search` 可搜索下拉（按模板名称/标识过滤），保留空选项与「（当前不可用）」选项避免已存值被静默清空；未选择时显示黄色警告条并附「短信发送 → 模板管理」跳转 | `Controllers/Admin/SettingController.php::smssendTemplateOptions()` / `Views/Admin/settings/index.blade.php` |
 
 ## 六-1、短信服务
 
 | #    | 特性      | 说明                                                           | 实现位置                                                        |
 | ---- | ------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
-| 26.1 | 短信门面    | `SmsService` 按 `sms_provider` 调度发送器，`isConfigured()` 校验凭证完整性 | `Services/SmsService.php`                                   |
+| 26.1 | 短信门面    | `SmsService` 先按 `sms_channel` 分流（内置短信服务 / 短信发送应用），内置通道再按 `sms_provider` 调度发送器；`isConfigured()` 按通道校验（内置校验凭证完整性，短信发送应用校验应用启用状态与模板标识） | `Services/SmsService.php`                                   |
 | 26.2 | 阿里云发送器  | AccessKey 签名 + Dysmsapi 接口，模板变量名 `code`                      | `Services/Sms/AliyunSmsSender.php`                          |
 | 26.3 | 腾讯云发送器  | SecretId/SecretKey 签名 + Sms 接口（SDKAppID 验证码模板）               | `Services/Sms/TencentSmsSender.php`                         |
 | 26.4 | 火山引擎发送器 | AccessKey 签名 + 短信消息组接口（SmsAccount）                           | `Services/Sms/VolcengineSmsSender.php`                      |
 | 26.5 | 验证码限频   | `RateLimiter` 60 秒/次，5 分钟有效，一次性失效                            | `Controllers/HomeApi/AuthController.php`                    |
 | 26.6 | 未注册自动建号 | 手机号不存在时自动创建用户（用户名取手机号，随机密码不可登录）                              | `Controllers/HomeApi/AuthController.php::createPhoneUser()` |
+| 26.7 | 短信发送应用通道 | `sms_channel=niuren` 时改由「短信发送」应用发送：按模板标识调用其 `SendService::sendByAlias()`，服务商/签名/服务商模板 Code 由该应用的模板记录决定，发送记录 `caller_app` 记为 `cmspro.sso`；模板未使用 `code` 变量时回退写入第一个字段；以 `class_exists()` 守卫该应用服务类，应用缺失时降级为「短信服务未配置」友好提示 | `Services/Sms/NiurenSmsSender.php` / `Services/SmsService.php` |
 
 ## 七、权限系统
 
@@ -109,6 +113,7 @@
 | 36.1 | 注册邮箱验证码    | 系统已配置邮箱时注册必填 6 位验证码（复用系统 `/api/user/register/email-code` 接口），验证码一次性失效；未配置邮箱时自动跳过 | `Controllers/HomeApi/AuthController.php` / `Views/Home/auth/register.blade.php` |
 | 36.2 | 找回密码双通道     | 登录页「注册账号」同行右侧默认显示「忘记密码」入口（不做通道显隐判断）；找回密码页两步流程（发送验证码 → 凭验证码重置新密码，成功后跳转登录页）：邮箱/手机均开启时以 tab 切换（邮箱找回/手机找回），仅开启其一则直接显示对应表单，均关闭时显示「系统未开启找回密码功能，请联系管理员」；邮箱通道复用系统 `/api/user/password/*` 接口，手机通道走 SSO 新增接口（`/auth/forgot/phone/code`、`/auth/forgot/phone/reset`，验证码独立缓存键 `cmspro_sso_pwd_reset_phone:*`，一次性消费防重放，未注册手机号拦截、频控与登录验证码一致）  | `Views/Home/auth/forgot-password.blade.php` / `Views/Home/auth/login.blade.php` / `Controllers/HomeApi/AuthController.php` / `Routes/home-api.php` |
 | 37   | 前台页面路径     | `window.SSO_BASE` 兼容双模式                                                          | `Views/layouts/home.blade.php`                                                  |
+| 38   | 框架账号页注入    | 系统前台账号页（`user.account.index`）以 Tab 形式组织（默认「个人信息」），经本应用 View composer 读取框架视图后由扩展位注入「账号绑定」Tab 标题与面板（面板内直接内嵌绑定列表）及共用绑定中心组件，不覆盖框架路由与视图（框架账号页更新可正常透传） | `ServiceProvider::registerUserAccountComposer()` / `Views/User/partials/bind-tab.blade.php` / `Views/Home/partials/bind-center.blade.php` |
 
 ## 十、菜单系统
 
@@ -183,4 +188,7 @@
 | 2.6.0 | 2026-09-10 | 找回密码双通道（邮箱/手机）：找回密码页支持邮箱/手机 tab 切换（均开启时 tab、单开启直接表单、全关显示「系统未开启找回密码功能，请联系管理员」）；新增手机找回 API（发送验证码 + 凭验证码重置密码，独立缓存键一次性消费防重放）；`SsoForgotPasswordTest` 14 用例 |
 | 2.6.1 | 2026-09-10 | 登录页「找回密码」入口改名为「忘记密码」并默认显示（去除通道可用性显隐判断与 `forgot_available` 视图数据），通道可用性提示保留在找回密码页内；应用全量 148 用例 |
 | 2.6.2 | 2026-09-11 | 覆盖系统托管跳转地址二次处理：登录/注册页对透传的 redirect 规范化（`normalizeRedirect()`）——嵌套托管登录/注册页完整 URL 提取内层 redirect 作为真实目标、相对路径补全主站域名成绝对地址（防子域名模式下登录后相对跳转落到 SSO 子域 404）、绝对地址同主域原样保留/外域丢弃走默认跳转；已登录直跳同步规范化；新增 `SsoRedirectNormalizeTest` 12 用例（应用全量 160 用例通过） |
+| 2.6.4 | 2026-10-20 | 前台账号页「账号绑定」由「覆盖系统同名路由渲染应用整页视图」改为「读取框架账号页视图经扩展位注入」：新增 `ServiceProvider::registerUserAccountComposer()`（View composer 读取 `user.account.index`，经 `@stack('user_account_content')` / `@stack('user_account_scripts')` 注入账号绑定卡片与共用绑定中心组件），删除应用侧 `Views/User/account.blade.php` 与 `Controllers/User/AccountController.php`，路由交还框架；框架账号页后续更新可正常透传 |
+| 2.7.0 | 2026-10-20 | 前台账号页「账号绑定」改为 Tab 展示：框架账号页 `resources/views/user/account/index.blade.php` 改用 `layui-tab layui-tab-card`（`layui.use` 增加 `element`），默认选中「个人信息」，扩展位 `user_account_content` 拆分为 `user_account_tab_titles` + `user_account_tab_contents`（`user_account_scripts` 不变）；应用侧 `bind-card.blade.php` 更名为 `bind-tab.blade.php`（输出 Tab 面板 + `.sso-bind-center-inline` 容器），绑定中心组件新增内嵌模式（容器存在时把绑定 DOM 移入并自动加载列表，首页弹窗入口行为不变）；`SsoAccountBindEntryTest` 断言同步更新 |
+| 2.8.0 | 2026-11-12 | 邮箱验证码登录新增「发信方式」（`email_mailer`：system/smtpmail），「SMTP邮箱」应用接管系统邮件时强制走该应用（设置页改为绿色确认条 + 隐藏域），未安装/未启用时选项置灰 + 引导卡片，`isEmailLoginEnabled()` 判定优先级改为「接管系统邮件 > 所选发信方式可用性 > 系统 SMTP」；手机验证码登录新增「短信通道」（`sms_channel`：builtin/niuren），新建 `Services/Sms/NiurenSmsSender.php` 按模板标识调用「短信发送」应用 `SendService::sendByAlias()`，`SmsService` 改为先按通道分流再按服务商调度，通道未就绪时置灰 + 引导卡片；短信模板由单行文本改为 layui `lay-search` 可搜索下拉（`sms_niuren_template_alias`），保留空选项与「（当前不可用）」选项防止已存值被清空 |
 

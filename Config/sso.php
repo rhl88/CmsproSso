@@ -66,11 +66,19 @@ return [
     // 手机验证码登录
     'phone_login_enabled' => '0',
 
-    // 邮箱验证码登录（需系统已配置 SMTP）
+    // 邮箱验证码登录
     'email_login_enabled' => '0',
+    // 发信方式：system 系统邮件配置 / smtpmail SMTP邮箱应用
+    'email_mailer' => 'system',
 
-    // 短信服务商（aliyun/tencent/volcengine）
+    // 短信通道：builtin 内置短信服务 / niuren 短信发送应用（NiurenSmssend）
+    'sms_channel' => 'builtin',
+
+    // 短信服务商（aliyun/tencent/volcengine，sms_channel=builtin 时生效）
     'sms_provider' => 'aliyun',
+
+    // 短信发送应用模板标识（sms_channel=niuren 时生效，需在该应用内先建好模板）
+    'sms_niuren_template_alias' => 'sso.phone.code',
 
     // 阿里云短信
     'sms_aliyun_access_key_id' => '',

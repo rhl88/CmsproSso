@@ -2,7 +2,7 @@
     "id": "cmspro.sso",
     "name": "统一登录",
     "description": "统一登录应用：为当前系统提供前台用户统一登录入口，支持账号密码登录与微信、QQ等社交化登录（当前实现微信登录与QQ互联登录）。支持子域名绑定与目录访问；快捷模式支持站点间社交登录中转——服务端作为纯跳板仅做授权中转，不建号、不绑定、不保存任何用户数据，将社交平台真实 openid 等授权数据透传给客户端，客户端以社交真实身份为锚点本地建号登录。",
-    "version": "2.6.3",
+    "version": "2.8.0",
     "icon": "fa fa-sign-in",
     "author": "CmsPro",
     "require": {
@@ -346,7 +346,18 @@
                     "title": "启用邮箱验证码登录",
                     "type": "switch",
                     "value": "0",
-                    "tips": "开启后前台登录页显示邮箱验证码登录入口（需系统已配置 SMTP 邮箱，否则不生效）"
+                    "tips": "开启后前台登录页显示邮箱验证码登录入口（需所选发信方式可用，否则不生效）"
+                },
+                {
+                    "name": "email_mailer",
+                    "title": "发信方式",
+                    "type": "select",
+                    "value": "system",
+                    "options": [
+                        {"label": "系统邮件配置", "value": "system"},
+                        {"label": "SMTP邮箱应用", "value": "smtpmail"}
+                    ],
+                    "tips": "验证码邮件的发送通道：系统邮件配置取后台「系统设置 → 邮件设置」；SMTP邮箱应用需先安装并启用「SMTP邮箱」应用，该应用开启「接管系统邮件」时强制使用"
                 }
             ]
         },
@@ -362,6 +373,24 @@
                     "tips": "开启后前台登录页显示手机验证码登录入口"
                 },
                 {
+                    "name": "sms_channel",
+                    "title": "短信通道",
+                    "type": "select",
+                    "value": "builtin",
+                    "options": [
+                        {"label": "内置短信服务", "value": "builtin"},
+                        {"label": "短信发送应用", "value": "niuren"}
+                    ],
+                    "tips": "内置短信服务使用下方服务商凭证；短信发送应用需先安装并启用「短信发送」应用，其服务商、签名与模板由该应用统一管理"
+                },
+                {
+                    "name": "sms_niuren_template_alias",
+                    "title": "短信模板标识",
+                    "type": "text",
+                    "value": "sso.phone.code",
+                    "tips": "短信通道为「短信发送应用」时生效，取该应用「模板管理」中已启用模板的模板标识（alias），模板内须包含变量 code 用于接收验证码"
+                },
+                {
                     "name": "sms_provider",
                     "title": "短信服务商",
                     "type": "select",
@@ -371,7 +400,7 @@
                         {"label": "腾讯云", "value": "tencent"},
                         {"label": "火山引擎", "value": "volcengine"}
                     ],
-                    "tips": "选择用于发送验证码短信的服务商，同一时间仅一家生效"
+                    "tips": "短信通道为「内置短信服务」时生效，选择用于发送验证码短信的服务商，同一时间仅一家生效"
                 },
                 {"name": "sms_aliyun_access_key_id", "title": "阿里云 AccessKey ID", "type": "text", "value": "", "tips": "阿里云 RAM 用户的 AccessKey ID"},
                 {"name": "sms_aliyun_access_key_secret", "title": "阿里云 AccessKey Secret", "type": "password", "value": "", "tips": "阿里云 RAM 用户的 AccessKey Secret"},

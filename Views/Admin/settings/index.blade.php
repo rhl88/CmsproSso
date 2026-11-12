@@ -284,15 +284,85 @@
                                 <div class="layui-input-block">
                                     <input type="checkbox" name="email_login_enabled" lay-skin="switch" lay-text="开启|关闭"
                                            {{ ($configs['email_login_enabled'] ?? '0') === '1' ? 'checked' : '' }}>
-                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示邮箱验证码登录入口（需系统已配置 SMTP 邮箱）</div>
+                                    <div class="layui-form-mid layui-word-aux">开启后前台登录页显示邮箱验证码登录入口</div>
                                 </div>
                             </div>
-                            @if(!(mail_configured()))
+                            @if($smtpmail_takeover ?? false)
+                            {{-- SMTP邮箱已接管系统邮件：强制使用 SMTP邮箱，无需选择 --}}
+                            <input type="hidden" name="email_mailer" value="smtpmail">
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">发信方式</label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 8px 12px; border-left: 3px solid #16baaa; background: #e8f7f5; color: #0f6b60; font-size: 13px; line-height: 1.8;">
+                                        <i class="fa fa-check-circle"></i> 「SMTP邮箱」应用已开启接管系统邮件，验证码邮件将通过 SMTP邮箱 发送，无需额外配置。
+                                    </div>
+                                </div>
+                            </div>
+                            @else
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">发信方式</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 220px;">
+                                    <select name="email_mailer" id="email_mailer" lay-filter="email_mailer">
+                                        <option value="system" {{ ($configs['email_mailer'] ?? 'system') === 'system' ? 'selected' : '' }}>系统邮件配置</option>
+                                        <option value="smtpmail" {{ ($configs['email_mailer'] ?? 'system') === 'smtpmail' ? 'selected' : '' }}
+                                                {{ !($smtpmail_enabled ?? false) ? 'disabled' : '' }}>SMTP邮箱应用@if(!($smtpmail_installed ?? false))（未安装）@elseif(!($smtpmail_enabled ?? false))（未启用）@endif</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">
+                                        选择验证码邮件的发送通道；「SMTP邮箱」开启接管系统邮件后将自动切换为该通道发送。
+                                    </div>
+                                </div>
+                            </div>
+                            @if(!($smtpmail_installed ?? false) || !($smtpmail_enabled ?? false))
+                            {{-- SMTP邮箱应用未就绪：置灰原因说明 + 安装/启用引导 --}}
                             <div class="layui-form-item">
                                 <label class="layui-form-label"></label>
                                 <div class="layui-input-block">
-                                    <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
-                                        系统尚未配置 SMTP 邮箱，验证码邮件无法发送。请前往「系统设置 → 邮件设置」完成 SMTP 配置后再开启本功能。
+                                    <div style="padding: 10px 14px; border-left: 3px solid #1e9fff; background: #f0f7ff; color: #12457a; font-size: 13px; line-height: 1.9;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">
+                                            <i class="fa fa-info-circle"></i>
+                                            @if(!($smtpmail_installed ?? false))
+                                            「SMTP邮箱」应用尚未安装，该发信方式已置灰不可选
+                                            @else
+                                            「SMTP邮箱」应用已安装但尚未启用，该发信方式已置灰不可选
+                                            @endif
+                                        </div>
+                                        <div style="color: #4a6a8a;">
+                                            @if(!($smtpmail_installed ?? false))
+                                            安装并启用后，可直接复用应用内配置的邮箱账号发送验证码邮件，无需再单独配置系统 SMTP。
+                                            <a href="{{ route('admin.app.market') }}" class="layui-btn layui-btn-xs layui-btn-normal" style="margin-left: 6px;">
+                                                <i class="fa fa-download"></i> 前往应用市场安装
+                                            </a>
+                                            @else
+                                            启用后即可复用应用内配置的邮箱账号发送验证码邮件，无需再单独配置系统 SMTP。
+                                            <a href="{{ route('admin.app.index') }}" class="layui-btn layui-btn-xs layui-btn-normal" style="margin-left: 6px;">
+                                                <i class="fa fa-cog"></i> 前往应用管理启用
+                                            </a>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @endif
+                            {{-- 系统邮件配置未就绪提示 --}}
+                            <div id="email-mailer-system-warn" style="{{ ($configs['email_mailer'] ?? 'system') === 'system' && !mail_configured() ? '' : 'display:none;' }}">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label"></label>
+                                    <div class="layui-input-block">
+                                        <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                            系统尚未配置 SMTP 邮箱，验证码邮件无法发送。请前往「系统设置 → 邮件设置」完成 SMTP 配置，或安装并启用「SMTP邮箱」应用后切换发信方式。
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {{-- SMTP邮箱应用未就绪提示 --}}
+                            <div id="email-mailer-smtpmail-warn" style="{{ ($configs['email_mailer'] ?? 'system') === 'smtpmail' && !($smtpmail_enabled ?? false) ? '' : 'display:none;' }}">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label"></label>
+                                    <div class="layui-input-block">
+                                        <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                            当前发信方式指向的「SMTP邮箱」应用不可用，验证码邮件无法发送。请切换为系统邮件配置，或按上方引导完成安装启用。
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -309,6 +379,59 @@
                                     <div class="layui-form-mid layui-word-aux">开启后前台登录页显示手机验证码登录入口</div>
                                 </div>
                             </div>
+                            @php
+                                $smsChannel = $configs['sms_channel'] ?? 'builtin';
+                                $savedAlias = trim($configs['sms_niuren_template_alias'] ?? '');
+                                $aliasList = array_column($smssend_templates ?? [], 'alias');
+                            @endphp
+                            <div class="layui-form-item">
+                                <label class="layui-form-label">短信通道</label>
+                                <div class="layui-input-block">
+                                    <div style="width: 200px;">
+                                    <select name="sms_channel" id="sms_channel" lay-filter="sms_channel">
+                                        <option value="builtin" {{ $smsChannel === 'builtin' ? 'selected' : '' }}>内置短信服务</option>
+                                        <option value="niuren" {{ $smsChannel === 'niuren' ? 'selected' : '' }}
+                                                {{ !($smssend_enabled ?? false) ? 'disabled' : '' }}>短信发送应用@if(!($smssend_installed ?? false))（未安装）@elseif(!($smssend_enabled ?? false))（未启用）@endif</option>
+                                    </select></div>
+                                    <div class="layui-form-mid layui-word-aux">
+                                        内置短信服务使用下方服务商凭证；短信发送应用的服务商、签名与模板由该应用统一管理。
+                                    </div>
+                                </div>
+                            </div>
+                            @if(!($smssend_installed ?? false) || !($smssend_enabled ?? false))
+                            {{-- 短信发送应用未就绪：置灰原因说明 + 安装/启用引导 --}}
+                            <div class="layui-form-item">
+                                <label class="layui-form-label"></label>
+                                <div class="layui-input-block">
+                                    <div style="padding: 10px 14px; border-left: 3px solid #1e9fff; background: #f0f7ff; color: #12457a; font-size: 13px; line-height: 1.9;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">
+                                            <i class="fa fa-info-circle"></i>
+                                            @if(!($smssend_installed ?? false))
+                                            「短信发送」应用尚未安装，该短信通道已置灰不可选
+                                            @else
+                                            「短信发送」应用已安装但尚未启用，该短信通道已置灰不可选
+                                            @endif
+                                        </div>
+                                        <div style="color: #4a6a8a;">
+                                            @if(!($smssend_installed ?? false))
+                                            安装并启用后，可直接复用该应用统一维护的服务商凭证、签名与短信模板，无需在本应用重复配置。
+                                            <a href="{{ route('admin.app.market') }}" class="layui-btn layui-btn-xs layui-btn-normal" style="margin-left: 6px;">
+                                                <i class="fa fa-download"></i> 前往应用市场安装
+                                            </a>
+                                            @else
+                                            启用后即可复用该应用统一维护的服务商凭证、签名与短信模板，无需在本应用重复配置。
+                                            <a href="{{ route('admin.app.index') }}" class="layui-btn layui-btn-xs layui-btn-normal" style="margin-left: 6px;">
+                                                <i class="fa fa-cog"></i> 前往应用管理启用
+                                            </a>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @endif
+
+                            {{-- 内置短信服务配置 --}}
+                            <div id="sms-builtin-fields" style="display:none;">
                             <div class="layui-form-item">
                                 <label class="layui-form-label">短信服务商</label>
                                 <div class="layui-input-block">
@@ -422,6 +545,49 @@
                                         <input type="text" name="sms_volc_template_id" value="{{ $configs['sms_volc_template_id'] ?? '' }}" placeholder="ST_6f8c****" class="layui-input">
                                     </div>
                                 </div>
+                            </div>
+                            </div>{{-- /内置短信服务配置 --}}
+
+                            {{-- 短信发送应用配置 --}}
+                            <div id="sms-niuren-fields" style="display:none;">
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label">短信模板</label>
+                                    <div class="layui-input-block">
+                                        <div style="width: 360px;">
+                                        <select name="sms_niuren_template_alias" id="sms_niuren_template_alias" lay-search
+                                                {{ !($smssend_enabled ?? false) ? 'disabled' : '' }}>
+                                            {{-- 保留空选项：应用无可用模板时避免收集到 null 覆盖已存值 --}}
+                                            <option value="">请选择短信模板</option>
+                                            @foreach($smssend_templates ?? [] as $tpl)
+                                            <option value="{{ $tpl['alias'] }}" {{ $savedAlias === $tpl['alias'] ? 'selected' : '' }}>
+                                                {{ $tpl['name'] }}（{{ $tpl['alias'] }}）
+                                            </option>
+                                            @endforeach
+                                            @if($savedAlias !== '' && !in_array($savedAlias, $aliasList, true))
+                                            <option value="{{ $savedAlias }}" selected>{{ $savedAlias }}（当前不可用）</option>
+                                            @endif
+                                        </select></div>
+                                        <div class="layui-form-mid layui-word-aux">
+                                            支持输入模板名称或模板标识搜索；模板需先在「短信发送」应用中创建并填写模板标识，且模板内须包含变量 code 用于接收验证码。
+                                        </div>
+                                    </div>
+                                </div>
+                                @if(!($smssend_enabled ?? false) || $savedAlias === '')
+                                <div class="layui-form-item">
+                                    <label class="layui-form-label"></label>
+                                    <div class="layui-input-block">
+                                        <div style="padding: 8px 12px; border-left: 3px solid #ffb800; background: #fffbe6; color: #874d00; font-size: 13px; line-height: 1.8;">
+                                            @if(!($smssend_enabled ?? false))
+                                            「短信发送」应用未就绪，验证码短信无法发送。请按上方引导安装并启用该应用，或切换为内置短信服务。
+                                            @else
+                                            尚未选择短信模板，验证码短信无法发送。请前往
+                                            <a href="/admin/niuren/smssend/templates" style="color:#1e9fff;">「短信发送 → 模板管理」</a>
+                                            创建验证码模板并设置模板标识后，再回到本页选择。
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
+                                @endif
                             </div>
                         </div>
 
@@ -782,6 +948,30 @@ layui.use(['form', 'jquery', 'element', 'common'], function() {
     });
 
     toggleSmsProviderFields($('#sms_provider').val());
+
+    // 短信通道切换：内置短信服务显示服务商凭证，短信发送应用显示模板选择
+    function toggleSmsChannelFields(channel) {
+        var isNiuren = channel === 'niuren';
+        $('#sms-builtin-fields').toggle(!isNiuren);
+        $('#sms-niuren-fields').toggle(isNiuren);
+    }
+
+    form.on('select(sms_channel)', function(data) {
+        toggleSmsChannelFields(data.value);
+    });
+
+    toggleSmsChannelFields($('#sms_channel').val());
+
+    // 发信方式切换：动态显示对应未就绪提示
+    var systemMailConfigured = @json(mail_configured());
+    var smtpmailEnabled = @json((bool)($smtpmail_enabled ?? false));
+    function toggleEmailMailerWarns(mailer) {
+        $('#email-mailer-system-warn').toggle(mailer === 'system' && !systemMailConfigured);
+        $('#email-mailer-smtpmail-warn').toggle(mailer === 'smtpmail' && !smtpmailEnabled);
+    }
+    form.on('select(email_mailer)', function(data) {
+        toggleEmailMailerWarns(data.value);
+    });
 
     // 开关字段名列表（checkbox 提交时不会出现在 serialize 中，需单独收集）
     var switchFields = ['wechat_enabled', 'wechat_oauth_enabled', 'qq_enabled', 'alipay_enabled', 'douyin_enabled', 'weibo_enabled', 'github_enabled', 'allow_register', 'override_system', 'phone_login_enabled', 'email_login_enabled', 'invite_enabled', 'captcha_enabled'];

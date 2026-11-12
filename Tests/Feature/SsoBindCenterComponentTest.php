@@ -9,7 +9,7 @@ use Tests\TestCase;
  * 统一登录应用 · 绑定中心共用组件分层测试
  *
  * 覆盖：共用绑定中心局部视图（cmspro.sso::Home.partials.bind-center）可独立渲染、
- * 结构自包含（弹层 DOM、绑定/解绑接口、入口事件委托、平台图标使用 layui 内置类），
+ * 结构自包含（弹层 DOM、绑定/解绑接口、入口事件委托、平台图标使用应用自带 PNG），
  * 供前台登录后首页与框架账号管理页（user.account.index）复用。
  */
 class SsoBindCenterComponentTest extends TestCase
@@ -38,11 +38,14 @@ class SsoBindCenterComponentTest extends TestCase
         $this->assertStringContainsString('/bind-status', $html);
         $this->assertStringContainsString('/user/bind/phone', $html);
 
-        // 平台图标统一使用 layui 内置图标，避免依赖单一页面的自定义样式类
-        $this->assertStringContainsString('layui-icon-login-wechat', $html);
-        $this->assertStringContainsString('layui-icon-login-qq', $html);
-        $this->assertStringContainsString('layui-icon-cellphone', $html);
-        $this->assertStringContainsString('layui-icon-email', $html);
+        // 平台图标与前台登录页一致，统一使用应用自带 PNG（Assets/icon → apps/cmspro.sso/icon），
+        // 不再使用 layui 字体图标（避免支付宝/抖音/微博错误借用 QQ 图标）
+        $this->assertStringContainsString('apps/cmspro.sso/icon', $html);
+        $this->assertStringContainsString("'wechat.png'", $html);
+        $this->assertStringContainsString("'qq.png'", $html);
+        $this->assertStringContainsString("'phone.png'", $html);
+        $this->assertStringContainsString("'email.png'", $html);
+        $this->assertStringNotContainsString('layui-icon-login-', $html);
 
         // 自包含：未定义 SSO_API_BASE 时兜底为相对路径
         $this->assertStringContainsString("'/api/cmspro/sso'", $html);

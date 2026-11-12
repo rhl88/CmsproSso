@@ -45,9 +45,12 @@ class SsoOAuthRelayTest extends TestCase
     {
         $this->createClient();
 
-        // 框架约定：abort(404) 渲染 errors.404 视图
+        // 框架约定：abort(404) 由 bootstrap/app.php 的 NotFoundHttpException 渲染器
+        // 统一输出 errors.404 页面，响应为 HTTP 200 且 original 是已渲染字符串（非 View 实例），
+        // 故按渲染结果断言，不能使用 assertViewIs('errors.404')
         $this->get('/sso/oauth/authorize?' . http_build_query($this->authorizeQuery()))
-            ->assertViewIs('errors.404');
+            ->assertStatus(200)
+            ->assertSee('页面不存在');
     }
 
     public function test_客户端ID无效或已禁用返回400(): void

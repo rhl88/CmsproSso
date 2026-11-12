@@ -360,10 +360,12 @@ class SsoRelayQrcodeTest extends TestCase
 
     public function test_中转邀请页relay平台识别正确(): void
     {
+        // 开发模式（APP_DEV_MODE=true）下 DevViewPathBanner 中间件重写响应体，
+        // original 变为已渲染字符串，assertViewIs/assertViewHas 不可用，
+        // 故按视图渲染出的平台变量断言平台识别结果
         $this->get('/sso/auth/relay/complete-invite?token=' . str_repeat('3', 32))
             ->assertOk()
-            ->assertViewIs('cmspro.sso::Home.auth.complete-invite')
-            ->assertViewHas('platform', 'relay');
+            ->assertSee('var platform = "relay";', false);
     }
 
     // ---------------------------------------------------------------- 辅助方法

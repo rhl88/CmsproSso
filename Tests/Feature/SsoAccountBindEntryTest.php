@@ -9,12 +9,12 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * 统一登录应用 · 前台账号页绑定入口集成测试
+ * 统一登录应用 · 前台账号页绑定 Tab 集成测试
  *
- * 覆盖：本应用按 CmsproNotepad 覆盖 dashboard 的应用注入模式，
- * 由应用覆盖系统同名路由 `user.account`（/user/account），在保留系统
- * 个人信息管理的同时渲染「账号绑定」入口并由共享绑定中心组件承接点击。
- * 不修改任何框架文件。
+ * 覆盖：本应用通过 View composer 读取系统框架账号页视图 user.account.index，
+ * 经其扩展位（@stack('user_account_tab_titles') / @stack('user_account_tab_contents')
+ * / @stack('user_account_scripts')）注入「账号绑定」Tab 与共享绑定中心组件；
+ * 不覆盖框架路由与视图，框架账号页后续更新可正常透传。
  */
 class SsoAccountBindEntryTest extends TestCase
 {
@@ -25,19 +25,20 @@ class SsoAccountBindEntryTest extends TestCase
         $this->app->register(ServiceProvider::class);
     }
 
-    public function test_应用覆盖前台账号页并注入账号绑定入口(): void
+    public function test_应用读取框架账号页并注入账号绑定Tab(): void
     {
         $this->actingAs($this->createUser(), 'web');
 
-        // 应用路由后注册覆盖系统同名 user.account → 渲染应用视图（含账号绑定）
+        // 框架路由渲染系统账号页，应用经扩展位注入「账号绑定」Tab
         $this->get('/user/account')
             ->assertOk()
-            // 覆盖后页面仍保留个人信息管理
-            ->assertSee('个人信息')
-            // 新增账号绑定入口（.sso-bind-center-open 点击由共享绑定中心组件承接）
-            ->assertSee('账号绑定')
-            ->assertSee('sso-bind-center-open')
-            // 页面同步引入共享绑定中心组件（弹层 DOM）
+            // 账号页以 Tab 组织，且默认选中「个人信息」
+            ->assertSee('layui-tab-title', false)
+            ->assertSee('<li class="layui-this">个人信息</li>', false)
+            // 应用注入的 Tab 标题与面板（面板内为绑定中心内嵌容器）
+            ->assertSee('<li>账号绑定</li>', false)
+            ->assertSee('sso-bind-center-inline', false)
+            // 注入的共享绑定中心组件（弹层 DOM，内嵌模式下由脚本移入 Tab 面板）
             ->assertSee('id="sso-bind-center-modal"', false);
     }
 
